@@ -1,0 +1,118 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: sealtrail-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-sealtrail}
+      POSTGRES_USER: ${POSTGRES_SUPERUSER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_SUPERUSER_PASSWORD:-postgres}
+      DB_OWNER_USER: ${DB_OWNER_USER:-sealtrail_owner}
+      DB_OWNER_PASSWORD: ${DB_OWNER_PASSWORD:-ownerpass}
+      DB_APP_USER: ${DB_APP_USER:-sealtrail_app}
+      DB_APP_PASSWORD: ${DB_APP_PASSWORD:-apppass}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infra/postgres/init:/docker-entrypoint-initdb.d:ro
+    ports:
+      - "127.0.0.1:5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_SUPERUSER:-postgres} -d ${POSTGRES_DB:-sealtrail}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sealtrail-net
+
+  minio:
+    image: minio/minio:RELEASE.2024-05-10T01-41-38Z
+    container_name: sealtrail-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_root_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_root_password}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sealtrail-net
+
+  minio-init:
+    image: minio/mc:RELEASE.2024-05-09T17-04-24Z
+    container_name: sealtrail-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ENDPOINT_URL: http://minio:9000
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minio_root_admin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minio_root_password}
+      S3_BUCKET_EVIDENCE: ${S3_BUCKET_EVIDENCE:-sealtrail-evidence}
+      S3_BUCKET_EXPORTS: ${S3_BUCKET_EXPORTS:-sealtrail-exports}
+      S3_APP_ACCESS_KEY: ${S3_APP_ACCESS_KEY:-sealtrail_app_svc}
+      S3_APP_SECRET_KEY: ${S3_APP_SECRET_KEY:-appsecret}
+      S3_DISPOSER_ACCESS_KEY: ${S3_DISPOSER_ACCESS_KEY:-sealtrail_disposer_svc}
+      S3_DISPOSER_SECRET_KEY: ${S3_DISPOSER_SECRET_KEY:-disposersecret}
+    volumes:
+      - ./infra/minio/init.sh:/init.sh:ro
+    entrypoint: ["/bin/sh", "/init.sh"]
+    networks:
+      - sealtrail-net
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: sealtrail-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    env_file:
+      - .env
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sealtrail-net
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: sealtrail-frontend
+    restart: unless-stopped
+    depends_on:
+      backend:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:8080/ || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - sealtrail-net
+
+volumes:
+  postgres_data:
+  minio_data:
+
+networks:
+  sealtrail-net:
+    driver: bridge
