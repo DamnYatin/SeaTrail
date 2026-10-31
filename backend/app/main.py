@@ -101,11 +101,14 @@ def create_app() -> FastAPI:
 
     # Core routers
     app.include_router(health.router)
-    from app.routers import auth, cases, evidence, users
+    from app.routers import approvals, auth, cases, custody, evidence, links, users
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(cases.router)
     app.include_router(evidence.router)
+    app.include_router(custody.router)
+    app.include_router(approvals.router)
+    app.include_router(links.router)
 
     return app
 
