@@ -113,6 +113,7 @@ def create_app() -> FastAPI:
         integrity,
         links,
         reports,
+        retention,
         users,
     )
     app.include_router(auth.router)
@@ -127,6 +128,7 @@ def create_app() -> FastAPI:
     app.include_router(integrity.router)
     app.include_router(reports.router)
     app.include_router(exports.router)
+    app.include_router(retention.router)
 
     return app
 

@@ -2,9 +2,9 @@
 
 | Metric | Status |
 |--------|--------|
-| Last verified stage | **Stage 6 Reports and exports** |
-| Current stage in progress | **Stage 7 Retention** |
-| Passed tests | 16 backend tests (Tests 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11) |
+| Last verified stage | **Stage 7 Retention** |
+| Current stage in progress | **Stage 8 Frontend foundation** |
+| Passed tests | 17 backend tests (Tests 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12) |
 | Known issues | Docker Compose CLI absent on Windows workstation; codebase designed with container-parity and verified with in-process test fixtures. |
 
 ## Completed Stages
@@ -14,10 +14,10 @@
 - [x] **Stage 3 Evidence intake** (`9b015b6`): Storage service (S3/MinIO), streaming SHA-256 intake, Crockford base32 check character numbering, three-way verification (pinned, live, audit), controlled PDF labels with QR, Tests 4–5 passing.
 - [x] **Stage 4 Custody and collaboration** (`bcf7e93`): Custody transfer state machine (internal, external), receipt acknowledgement re-verification, dual-authorization approvals engine, annotations, people, events, notes, links, timeline, Tests 6–7 passing.
 - [x] **Stage 5 Integrity engine** (`f041d3b`): Anomaly detection rules engine (HASH_MISMATCH, OBJECT_REPLACED, CHAIN_BROKEN, CHECKPOINT_INVALID, MISSING_ACK, OFF_HOURS_ACCESS, BURST_ACCESS, REPEATED_DENIED) with deduplication and audit linking, in-process APScheduler background jobs, alerts REST API, chain verification endpoint with `integrity_state` caching, evidence verification sweep service and API, Test 9 passing.
-- [x] **Stage 6 Reports and exports**: Cryptographically signed custody reports (JSON + ReportLab PDF with QR verification code and legal notice), offline report verification endpoint (`POST /reports/verify`), statutory Section 63 BSA draft certificate PDF, verifiable export package generation (`SEALTRAIL-EXPORT-*.zip`) with embedded offline verifier (`verify.py`), SHA256SUMS.txt, Ed25519 manifest signature, optional AES-256 ZIP encryption via pyzipper, Tests 10 and 11 passing.
+- [x] **Stage 6 Reports and exports** (`12e56c0`): Cryptographically signed custody reports (JSON + ReportLab PDF with QR verification code and legal notice), offline report verification endpoint (`POST /reports/verify`), statutory Section 63 BSA draft certificate PDF, verifiable export package generation (`SEALTRAIL-EXPORT-*.zip`) with embedded offline verifier (`verify.py`), SHA256SUMS.txt, Ed25519 manifest signature, optional AES-256 ZIP encryption via pyzipper, Tests 10 and 11 passing.
+- [x] **Stage 7 Retention**: Legal hold placement on evidence and cases, dual-authorization hold release, retention policies (Standard 5y, Extended 10y, Short 90d), retention due listing, approved disposal with complete S3 object version deletion, status DISPOSED with permanent SHA-256 tombstone preserving complete audit trail, Test 12 passing, `docs/openapi.json` re-exported.
 
 ## Next Stages
-- [ ] **Stage 7 Retention** (Legal hold, retention policies, approved disposal, export `docs/openapi.json` again)
 - [ ] **Stage 8 Frontend foundation** (MUI theme, AppShell, Sidebar, Evidence Items table matching reference)
 - [ ] **Stage 9a Frontend workflows** (Create Evidence dialog, actions menu, transfers, approvals)
 - [ ] **Stage 9b Frontend oversight** (Dashboard, timeline, audit log, integrity, alerts, reports)
