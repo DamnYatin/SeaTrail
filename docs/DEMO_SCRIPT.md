@@ -127,3 +127,4 @@ Open your terminal beside the browser:
    ```
    - Re-verify: Chain is immediately green and valid again.
 5. **Conclude with Tagline**: *"SealTrail: Prove it hasn't changed."*
+

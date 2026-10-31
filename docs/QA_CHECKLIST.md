@@ -62,3 +62,4 @@ This document records the end-to-end acceptance criteria and manual browser veri
 | **Evidence Hash Corruption** | `python scripts/tamper_demo.py evidence-hash` | Evidence sweep detects SHA-256 mismatch; flags `HASH_MISMATCH`. | **PASS** |
 | **SLA Missing Ack** | Background scheduler job | Detects transfers where `now > ack_due_at`; raises `MEDIUM` alert. | **PASS** |
 | **Clean State Restoration** | `python scripts/tamper_demo.py restore` | Reverts modified database rows; `verify_chain` returns `ok: true`. | **PASS** |
+

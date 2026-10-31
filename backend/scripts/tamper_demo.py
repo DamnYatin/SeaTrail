@@ -35,20 +35,24 @@ BACKUP_FILE = Path(__file__).resolve().parent.parent / ".tamper_backup.json"
 
 def get_privileged_engine():
     """Get database engine with sufficient privileges to bypass triggers or test tampering."""
+    # If DATABASE_URL_APP is overridden (e.g. to SQLite), use that engine directly
+    if settings.DATABASE_URL_APP.startswith("sqlite"):
+        from app.db import get_engine
+
+        return get_engine()
+
     url = (
         settings.DATABASE_URL_SUPERUSER_HOST
         or settings.DATABASE_URL_OWNER
         or settings.DATABASE_URL_APP
     )
-    # Fallback to local sqlite if Postgres host is unreachable in non-docker test run
-    if "postgresql" in url and "localhost" in url:
+    if "postgresql" in url:
         try:
-            eng = create_engine(url)
+            eng = create_engine(url, connect_args={"connect_timeout": 3})
             with eng.connect() as conn:
                 conn.execute(text("SELECT 1"))
             return eng
         except Exception:
-            # Fallback to app database engine
             from app.db import get_engine
 
             return get_engine()
@@ -342,7 +346,7 @@ def restore():
                 row.payload = rec["original_payload"]
                 row.entry_hash = rec["original_hash"]
                 session.commit()
-                print(f"  [✓] Restored audit entry #{rec['seq']}")
+                print(f"  [PASS] Restored audit entry #{rec['seq']}")
 
         # Restore audit rewrite
         if "audit_rewrite" in backup:
@@ -353,7 +357,7 @@ def restore():
                     row.prev_hash = rec["prev_hash"]
                     row.entry_hash = rec["entry_hash"]
             session.commit()
-            print(f"  [✓] Restored {len(backup['audit_rewrite'])} rewritten audit entries")
+            print(f"  [PASS] Restored {len(backup['audit_rewrite'])} rewritten audit entries")
 
         # Restore hash tamper
         if "hash_tamper" in backup:
@@ -362,12 +366,12 @@ def restore():
             if ev:
                 ev.sha256 = rec["original_sha256"]
                 session.commit()
-                print(f"  [✓] Restored SHA-256 for evidence {rec['evidence_number']}")
+                print(f"  [PASS] Restored SHA-256 for evidence {rec['evidence_number']}")
 
         # Restore object tamper
         if "object_tamper" in backup:
             rec = backup["object_tamper"]
-            print(f"  [✓] Restored S3 object pointer for {rec['evidence_number']}")
+            print(f"  [PASS] Restored S3 object pointer for {rec['evidence_number']}")
 
         if is_pg:
             session.execute(text("SET session_replication_role = 'origin';"))

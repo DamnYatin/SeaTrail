@@ -174,3 +174,4 @@ public_key_id: ed25519-2026-v1"]
 ### Defense Against Malicious Database Administrators
 1. If a rogue administrator updates an audit entry directly in PostgreSQL, the hash chain breaks (`prev_hash != calculated_hash` for subsequent rows).
 2. If the rogue administrator recomputes all hashes down the entire chain to forge consistency, the newly calculated head hash will fail verification against the historical **Ed25519-signed checkpoints** published outside the transaction table.
+

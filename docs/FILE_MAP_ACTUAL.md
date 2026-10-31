@@ -176,3 +176,4 @@ Generated at the completion of Stage 11. This map lists all repository files (ex
 - `frontend/src/pages/RetentionPage.tsx`: Retention policies, upcoming retention expirations, and approved disposal queue.
 - `frontend/src/pages/TransfersPage.tsx`: Chain-of-custody transfers list with SLA tracking and direct receipt acknowledgement.
 - `frontend/src/pages/UsersPage.tsx`: Administrative user management page for creating users and unlocking locked accounts.
+

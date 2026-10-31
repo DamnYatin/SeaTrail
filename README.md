@@ -123,3 +123,4 @@ npm run build
 
 ## License & Disclaimer
 SealTrail was created as an educational prototype for HACKNOVA 2026. Electronic certificates generated under Section 63 of the Bharatiya Sakshya Adhiniyam, 2023 are draft templates requiring review and execution by authorized forensic practitioners.
+

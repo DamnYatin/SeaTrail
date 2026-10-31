@@ -58,3 +58,4 @@ This document provides a forensic threat analysis of SealTrail according to STRI
 2. **Fail-Closed Default**: Any cryptographic hash mismatch or authorization ambiguity results in immediate operation abortion and critical anomaly alert creation.
 3. **Audit Atomicity**: Every state change commits in the identical database transaction as its corresponding audit entry under `pg_advisory_xact_lock()`. No orphaned state changes can exist.
 4. **Deterministic Canonicalization**: Audit entries are serialized to canonical JSON using sorted keys and standard separators to ensure bit-level stability across platforms and Python/PostgreSQL roundtrips.
+
