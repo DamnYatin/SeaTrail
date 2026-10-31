@@ -51,6 +51,9 @@ lerna-debug.log*
 postgres_data/
 minio_data/
 minio_data*/
+*.db
+*.sqlite
+*.sqlite3
 
 # Temp & Editor
 tmp/

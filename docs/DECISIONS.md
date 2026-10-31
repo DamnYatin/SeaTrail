@@ -9,3 +9,4 @@ This document records architectural, design, and implementation decisions made d
 | 2026-10-31 | Sync SQLAlchemy 2.0 with psycopg 3 | Mandated in AGENTS.md Section 2 for rock-solid transaction coupling with audit chain. |
 | 2026-10-31 | Single global chain with advisory lock per transaction | Guarantees strictly serial contiguous audit entries without gaps or race conditions. |
 | 2026-10-31 | Standalone verify.py shipped with standard library fallback for Ed25519 | Allows offline verification on any standard Python 3 workstation without pip dependencies. |
+| 2026-10-31 | Reorder remaining execution: seed data first, then Stage 8 visual polish, Stage 9a/b, tamper_demo.py | Populates realistic database & MinIO storage first so frontend pages display live data during visual QA and browser checks. |
