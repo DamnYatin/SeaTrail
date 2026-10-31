@@ -12,6 +12,7 @@ from app.logging import logger
 from app.models.alerts import Alert, AlertSeverity, AlertStatus
 from app.models.audit import AuditLog
 from app.models.evidence import EvidenceItem, IntegrityStateEnum
+from app.models.integrity import IntegrityRun, IntegrityRunKind, IntegrityRunStatus
 from app.services import hashing, storage
 from app.services.audit_chain import AuditAction, append
 
@@ -186,3 +187,54 @@ def verify_evidence(
         audit_hash_match=audit_match,
         details=details,
     )
+
+
+def run_evidence_sweep(
+    session: Session,
+    started_by: str,
+    ip: Optional[str] = None,
+) -> IntegrityRun:
+    """
+    Run an integrity verification sweep across all active evidence items.
+    Updates the IntegrityRun record and audits verification.
+    """
+    now = datetime.now(timezone.utc)
+    sweep = IntegrityRun(
+        kind=IntegrityRunKind.EVIDENCE_SWEEP,
+        started_by=started_by,
+        started_at=now,
+        status=IntegrityRunStatus.RUNNING,
+    )
+    session.add(sweep)
+    session.flush()
+
+    active_items = (
+        session.query(EvidenceItem)
+        .filter(EvidenceItem.status != "DISPOSED")
+        .all()
+    )
+
+    sweep.total = len(active_items)
+    failed_count = 0
+    checked_count = 0
+
+    for item in active_items:
+        res = verify_evidence(
+            session=session,
+            evidence=item,
+            actor=None,
+            trigger="EVIDENCE_SWEEP",
+            ip=ip,
+        )
+        checked_count += 1
+        if not res.match:
+            failed_count += 1
+
+    sweep.checked = checked_count
+    sweep.failed = failed_count
+    sweep.finished_at = datetime.now(timezone.utc)
+    sweep.status = IntegrityRunStatus.COMPLETED
+
+    session.flush()
+    return sweep
+
