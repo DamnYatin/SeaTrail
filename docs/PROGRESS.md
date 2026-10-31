@@ -2,8 +2,8 @@
 
 | Metric | Status |
 |--------|--------|
-| Last verified stage | **Stage 8 Frontend foundation** |
-| Current stage in progress | **Stage 9a Frontend workflows** |
+| Last verified stage | **Stage 9a Frontend workflows** |
+| Current stage in progress | **Stage 9b Frontend oversight** |
 | Passed tests | 17 backend tests passing + Frontend tsc, eslint, build passing |
 | Known issues | Docker Compose CLI absent on Windows workstation; codebase designed with container-parity and verified with in-process test fixtures. |
 
@@ -17,10 +17,10 @@
 - [x] **Stage 6 Reports and exports** (`12e56c0`): Cryptographically signed custody reports (JSON + ReportLab PDF with QR verification code and legal notice), offline report verification endpoint (`POST /reports/verify`), statutory Section 63 BSA draft certificate PDF, verifiable export package generation (`SEALTRAIL-EXPORT-*.zip`) with embedded offline verifier (`verify.py`), SHA256SUMS.txt, Ed25519 manifest signature, optional AES-256 ZIP encryption via pyzipper, Tests 10 and 11 passing.
 - [x] **Stage 7 Retention** (`79ca4dd`): Legal hold placement on evidence and cases, dual-authorization hold release, retention policies (Standard 5y, Extended 10y, Short 90d), retention due listing, approved disposal with complete S3 object version deletion, status DISPOSED with permanent SHA-256 tombstone preserving complete audit trail, Test 12 passing, `docs/openapi.json` re-exported.
 - [x] **Synthetic Seed Data** (`557628b`): Realistic synthetic dataset generated through service layer (7 users, 3 cases, 24 evidence items across formats, active transfers, overdue SLA alert, dual-authorization approvals, legal holds, annotations, entity links, signed checkpoint). `verify_chain` verified clean.
-- [x] **Stage 8 Frontend foundation** (`feat(ui): app shell, theming and evidence items page`): MUI dark (#1e1e1e / #2d2d2d) and light themes, 232px sidebar navigation, responsive AppShell, full Evidence Items table matching reference design with pagination, search, column chooser, expandable row with metadata split, cryptographic SHA-256 integrity block, tabbed subpanels, status chips and hash text. Strict TypeScript, ESLint and production build passing.
+- [x] **Stage 8 Frontend foundation** (`e9de7c7`): MUI dark (#1e1e1e / #2d2d2d) and light themes, 232px sidebar navigation, responsive AppShell, full Evidence Items table matching reference design with pagination, search, column chooser, expandable row with metadata split, cryptographic SHA-256 integrity block, tabbed subpanels, status chips and hash text. Strict TypeScript, ESLint and production build passing.
+- [x] **Stage 9a Frontend workflows** (`feat(ui): evidence intake, custody actions, approvals`): Create Evidence dialog with chunked client-side hashing via hash-wasm (real-time progress bar), all Action menu flows (Transfer Custody, Acknowledge Receipt, Add Annotation, Create Defensible Link, Legal Hold placement/release request, Export Package request, PDF/JSON reports), Transfers Page with overdue SLA tracking and direct receipt acknowledgement, Approvals Page with dual-authorization two-person rule enforcement (self-approval blocked).
 
 ## Next Stages
-- [ ] **Stage 9a Frontend workflows** (Create Evidence dialog, actions menu, transfers, approvals)
-- [ ] **Stage 9b Frontend oversight** (Dashboard, timeline, audit log, integrity, alerts, reports)
+- [ ] **Stage 9b Frontend oversight** (Dashboard, timeline, audit log with chain verify, integrity, alerts, reports)
 - [ ] **Stage 10 Tamper simulator & hardening** (tamper_demo.py live attack simulator, security hardening)
 - [ ] **Stage 11 Docs and final QA** (Architecture, threat model, demo script, QA checklist, final tag)

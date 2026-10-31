@@ -41,6 +41,15 @@ import PrintIcon from '@mui/icons-material/Print';
 import { apiClient, getAccessToken } from '../api/client';
 import { HashText } from '../components/HashText';
 import { StatusChip } from '../components/StatusChip';
+import { useAuth } from '../auth/AuthContext';
+
+import { CreateEvidenceDialog } from '../components/CreateEvidenceDialog';
+import { TransferCustodyDialog } from '../components/TransferCustodyDialog';
+import { AcknowledgeTransferDialog } from '../components/AcknowledgeTransferDialog';
+import { AddAnnotationDialog } from '../components/AddAnnotationDialog';
+import { CreateLinkDialog } from '../components/CreateLinkDialog';
+import { LegalHoldDialog } from '../components/LegalHoldDialog';
+import { ExportPackageDialog } from '../components/ExportPackageDialog';
 
 interface EvidenceItemRow {
   id: string;
@@ -59,6 +68,7 @@ interface EvidenceItemRow {
   size_bytes: number;
   sha256: string;
   intake_at: string;
+  current_custodian_id?: string;
   current_custodian_name?: string;
   current_location?: string;
   status: string;
@@ -72,7 +82,37 @@ interface EvidenceItemRow {
   acquisition_tool?: string;
 }
 
+interface AnnotationItem {
+  id: string;
+  body: string;
+  body_sha256: string;
+  author_name?: string;
+  created_at: string;
+}
+
+interface EvidenceLinkItem {
+  id: string;
+  target_type: string;
+  target_id: string;
+  relation: string;
+  created_at: string;
+}
+
+interface TransferItem {
+  id: string;
+  from_user_name?: string;
+  to_user_id?: string;
+  to_user_name?: string;
+  to_location?: string;
+  reason: string;
+  status: string;
+  hash_at_send?: string;
+  requested_at: string;
+}
+
 export const EvidencePage: React.FC = () => {
+  const { user } = useAuth();
+
   // State
   const [items, setItems] = useState<EvidenceItemRow[]>([]);
   const [total, setTotal] = useState(0);
@@ -83,6 +123,15 @@ export const EvidencePage: React.FC = () => {
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedDetails, setExpandedDetails] = useState<Record<string, unknown>>({});
   const [activeTab, setActiveTab] = useState<Record<string, number>>({});
+
+  // Sub-tab cached data
+  const [tabAnnotations, setTabAnnotations] = useState<Record<string, AnnotationItem[]>>({});
+  const [tabLinks, setTabLinks] = useState<Record<string, EvidenceLinkItem[]>>({});
+  const [tabTransfers, setTabTransfers] = useState<Record<string, TransferItem[]>>({});
+
+  // Cases and Users for selectors
+  const [cases, setCases] = useState<Array<{ id: string; case_number: string; name: string }>>([]);
+  const [users, setUsers] = useState<Array<{ id: string; full_name: string; email: string; role: string }>>([]);
 
   // Column visibility
   const [visibleColumns, setVisibleColumns] = useState<Record<string, boolean>>({
@@ -107,6 +156,42 @@ export const EvidencePage: React.FC = () => {
   const [filterAnchor, setFilterAnchor] = useState<null | HTMLElement>(null);
   const [typeFilter, setTypeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  // Workflow Dialog States
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [transferDialogOpen, setTransferDialogOpen] = useState(false);
+  const [activeTransferItem, setActiveTransferItem] = useState<EvidenceItemRow | null>(null);
+  const [ackDialogOpen, setAckDialogOpen] = useState(false);
+  const [activeAckTransfer, setActiveAckTransfer] = useState<{ id: string; evidenceNumber?: string; sendHash?: string } | null>(null);
+  const [annotationDialogOpen, setAnnotationDialogOpen] = useState(false);
+  const [activeAnnotationItem, setActiveAnnotationItem] = useState<EvidenceItemRow | null>(null);
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [activeLinkItem, setActiveLinkItem] = useState<EvidenceItemRow | null>(null);
+  const [legalHoldDialogOpen, setLegalHoldDialogOpen] = useState(false);
+  const [activeLegalHoldItem, setActiveLegalHoldItem] = useState<EvidenceItemRow | null>(null);
+  const [exportDialogOpen, setExportDialogOpen] = useState(false);
+  const [activeExportItem, setActiveExportItem] = useState<EvidenceItemRow | null>(null);
+
+  // Fetch Cases and Users
+  useEffect(() => {
+    const fetchCasesAndUsers = async () => {
+      try {
+        const { data: casesData } = await apiClient.GET('/api/v1/cases');
+        if (casesData && Array.isArray(casesData)) {
+          setCases(
+            casesData.map((c) => ({
+              id: c.id,
+              case_number: c.case_number,
+              name: c.name,
+            }))
+          );
+        }
+      } catch {
+        // Ignored if forbidden
+      }
+    };
+    fetchCasesAndUsers();
+  }, []);
 
   // Fetch Evidence List
   const fetchEvidence = React.useCallback(async () => {
@@ -145,6 +230,43 @@ export const EvidencePage: React.FC = () => {
     fetchEvidence();
   }, [fetchEvidence]);
 
+  // Load Sub-Tab Data
+  const loadSubTabData = async (item: EvidenceItemRow, tabIdx: number) => {
+    if (tabIdx === 1 && !tabAnnotations[item.id]) {
+      try {
+        const { data } = await apiClient.GET('/api/v1/evidence/{evidence_id}/annotations', {
+          params: { path: { evidence_id: item.id } },
+        });
+        if (data && Array.isArray(data)) {
+          setTabAnnotations((prev) => ({ ...prev, [item.id]: data as unknown as AnnotationItem[] }));
+        }
+      } catch {
+        // Ignored
+      }
+    } else if (tabIdx === 2 && !tabLinks[item.id]) {
+      try {
+        const { data } = await apiClient.GET('/api/v1/evidence/{evidence_id}/links', {
+          params: { path: { evidence_id: item.id } },
+        });
+        if (data && Array.isArray(data)) {
+          setTabLinks((prev) => ({ ...prev, [item.id]: data as unknown as EvidenceLinkItem[] }));
+        }
+      } catch {
+        // Ignored
+      }
+    } else if (tabIdx === 3 && !tabTransfers[item.id]) {
+      try {
+        const { data } = await apiClient.GET('/api/v1/transfers');
+        if (data && Array.isArray(data)) {
+          const itemTransfers = data.filter((t) => t.evidence_id === item.id);
+          setTabTransfers((prev) => ({ ...prev, [item.id]: itemTransfers as unknown as TransferItem[] }));
+        }
+      } catch {
+        // Ignored
+      }
+    }
+  };
+
   // Handle expand row & cache detail
   const handleToggleExpand = async (item: EvidenceItemRow) => {
     if (expandedId === item.id) {
@@ -165,6 +287,33 @@ export const EvidencePage: React.FC = () => {
         console.error('Failed to load item detail', e);
       }
     }
+
+    // Preload tab 0 data or current tab data
+    const currentTabIdx = activeTab[item.id] || 0;
+    loadSubTabData(item, currentTabIdx);
+  };
+
+  // Open Transfer Dialog & Load Case Members
+  const handleOpenTransfer = async (item: EvidenceItemRow) => {
+    setActiveTransferItem(item);
+    try {
+      const { data } = await apiClient.GET('/api/v1/cases/{case_id}/members', {
+        params: { path: { case_id: item.case_id } },
+      });
+      if (data && Array.isArray(data)) {
+        setUsers(
+          data.map((m: { user_id: string; user_name?: string | null; user_email?: string | null; case_role?: string }) => ({
+            id: m.user_id,
+            full_name: m.user_name || m.user_id.slice(0, 8),
+            email: m.user_email || '',
+            role: m.case_role || 'MEMBER',
+          }))
+        );
+      }
+    } catch {
+      // Ignored
+    }
+    setTransferDialogOpen(true);
   };
 
   // CSV Export
@@ -212,19 +361,19 @@ export const EvidencePage: React.FC = () => {
   };
 
   return (
-    <Box>
-      {/* Page Title & Stats */}
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="h1" sx={{ color: 'text.primary', fontWeight: 500 }}>
+    <Box sx={{ p: 3, maxWidth: 1600, mx: 'auto' }}>
+      {/* Page Title & Subtitle */}
+      <Box sx={{ mb: 2.5 }}>
+        <Typography variant="h5" sx={{ fontWeight: 600, mb: 0.5 }}>
           Evidence Items
         </Typography>
-        <Typography variant="caption" sx={{ color: 'text.secondary', fontSize: '13px' }}>
-          Total {total} items registered across active workspace
+        <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+          Total {total} items registered across active and archived investigations
         </Typography>
       </Box>
 
       {/* Main Table Card */}
-      <Card sx={{ border: '1px solid', borderColor: 'divider', boxShadow: 'none' }}>
+      <Card sx={{ border: '1px solid', borderColor: 'divider', borderRadius: '4px' }}>
         {/* Toolbar */}
         <Box
           sx={{
@@ -244,6 +393,7 @@ export const EvidencePage: React.FC = () => {
               variant="contained"
               size="small"
               startIcon={<AddIcon />}
+              onClick={() => setCreateDialogOpen(true)}
               sx={{
                 backgroundColor: 'primary.main',
                 px: 2,
@@ -312,9 +462,8 @@ export const EvidencePage: React.FC = () => {
             </Tooltip>
 
             <TextField
-              placeholder="Search Evidence"
-              variant="standard"
               size="small"
+              placeholder="Search Evidence..."
               value={searchQuery}
               onChange={(e) => {
                 setSearchQuery(e.target.value);
@@ -323,35 +472,44 @@ export const EvidencePage: React.FC = () => {
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
-                    <SearchIcon sx={{ fontSize: '16px', color: 'text.secondary' }} />
+                    <SearchIcon sx={{ fontSize: '18px', color: 'text.secondary' }} />
                   </InputAdornment>
                 ),
-                sx: { fontSize: '13px', pb: 0.3 },
+                sx: { height: 32, fontSize: '12.5px' },
               }}
-              sx={{ width: 180, ml: 1 }}
+              sx={{ width: 220 }}
             />
           </Box>
         </Box>
 
-        {/* Data Table */}
+        {/* Table */}
         <TableContainer>
-          <Table size="small" sx={{ minWidth: 1000 }}>
+          <Table size="small">
             <TableHead>
-              <TableRow>
+              <TableRow sx={{ backgroundColor: (theme) => (theme.palette.mode === 'dark' ? '#2f2f2f' : '#eef0f3') }}>
                 <TableCell sx={{ width: 40 }} />
-                <TableCell>Evidence Number</TableCell>
-                <TableCell>Case Number</TableCell>
-                <TableCell>Case Name</TableCell>
-                <TableCell>Intake Date</TableCell>
-                <TableCell>Type</TableCell>
-                <TableCell>Brand</TableCell>
-                <TableCell>Item Name</TableCell>
-                <TableCell>Progress</TableCell>
-                <TableCell>Current Location</TableCell>
-                {visibleColumns.sha256 && <TableCell>SHA-256</TableCell>}
-                {visibleColumns.integrity && <TableCell>Integrity</TableCell>}
-                {visibleColumns.collectedBy && <TableCell>Collected By</TableCell>}
-                {visibleColumns.retentionUntil && <TableCell>Retention Until</TableCell>}
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Evidence Number</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Case Number</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Case Name</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Intake Date</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Type</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Brand</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Item Name</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Progress</TableCell>
+                <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Current Location</TableCell>
+
+                {visibleColumns.sha256 && (
+                  <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>SHA-256</TableCell>
+                )}
+                {visibleColumns.integrity && (
+                  <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Integrity</TableCell>
+                )}
+                {visibleColumns.collectedBy && (
+                  <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Collected By</TableCell>
+                )}
+                {visibleColumns.retentionUntil && (
+                  <TableCell sx={{ fontWeight: 600, fontSize: '12px' }}>Retention Until</TableCell>
+                )}
               </TableRow>
             </TableHead>
 
@@ -359,7 +517,7 @@ export const EvidencePage: React.FC = () => {
               {loading ? (
                 <TableRow>
                   <TableCell colSpan={14} sx={{ textAlign: 'center', py: 4 }}>
-                    <CircularProgress size={28} />
+                    <CircularProgress size={24} />
                   </TableCell>
                 </TableRow>
               ) : items.length === 0 ? (
@@ -650,7 +808,10 @@ export const EvidencePage: React.FC = () => {
                               {/* Compact Tabs */}
                               <Tabs
                                 value={activeTab[item.id] || 0}
-                                onChange={(_, val) => setActiveTab((prev) => ({ ...prev, [item.id]: val }))}
+                                onChange={(_, val) => {
+                                  setActiveTab((prev) => ({ ...prev, [item.id]: val }));
+                                  loadSubTabData(item, val);
+                                }}
                                 sx={{
                                   minHeight: 32,
                                   borderBottom: '1px solid',
@@ -665,31 +826,234 @@ export const EvidencePage: React.FC = () => {
                                 }}
                               >
                                 <Tab label="Custody Trail" />
-                                <Tab label="Annotations" />
-                                <Tab label="Links" />
-                                <Tab label="Transfers" />
+                                <Tab label={`Annotations (${tabAnnotations[item.id]?.length ?? '•'})`} />
+                                <Tab label={`Links (${tabLinks[item.id]?.length ?? '•'})`} />
+                                <Tab label={`Transfers (${tabTransfers[item.id]?.length ?? '•'})`} />
                               </Tabs>
 
                               <Box sx={{ pt: 1.5 }}>
+                                {/* Tab 0: Custody Trail */}
                                 {(activeTab[item.id] || 0) === 0 && (
-                                  <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
-                                    Chronological chain-of-custody recorded and signed. Download custody report from Actions menu.
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                      <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
+                                        Chronological chain-of-custody recorded and signed. Download complete certified report below:
+                                      </Typography>
+                                      <Box sx={{ display: 'flex', gap: 1 }}>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          onClick={() => {
+                                            const token = getAccessToken();
+                                            window.open(`/api/v1/evidence/${item.id}/custody-report?format=pdf&token=${token}`, '_blank');
+                                          }}
+                                          sx={{ fontSize: '11px', py: 0.2 }}
+                                        >
+                                          Custody Report (PDF)
+                                        </Button>
+                                        <Button
+                                          size="small"
+                                          variant="outlined"
+                                          onClick={() => {
+                                            const token = getAccessToken();
+                                            window.open(`/api/v1/evidence/${item.id}/custody-report?format=json&token=${token}`, '_blank');
+                                          }}
+                                          sx={{ fontSize: '11px', py: 0.2 }}
+                                        >
+                                          Signed JSON
+                                        </Button>
+                                      </Box>
+                                    </Box>
+                                  </Box>
                                 )}
+
+                                {/* Tab 1: Annotations */}
                                 {(activeTab[item.id] || 0) === 1 && (
-                                  <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
-                                    Append-only annotations linked to this evidence record.
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                                        APPEND-ONLY FORENSIC ANNOTATIONS
+                                      </Typography>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<AddIcon sx={{ fontSize: 14 }} />}
+                                        onClick={() => {
+                                          setActiveAnnotationItem(item);
+                                          setAnnotationDialogOpen(true);
+                                        }}
+                                        sx={{ fontSize: '11px', py: 0.2 }}
+                                      >
+                                        Add Annotation
+                                      </Button>
+                                    </Box>
+
+                                    {tabAnnotations[item.id] && tabAnnotations[item.id].length > 0 ? (
+                                      tabAnnotations[item.id].map((ann) => (
+                                        <Box
+                                          key={ann.id}
+                                          sx={{
+                                            p: 1.5,
+                                            backgroundColor: 'background.default',
+                                            borderRadius: 1,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                          }}
+                                        >
+                                          <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                                            <Typography variant="caption" sx={{ fontWeight: 600 }}>
+                                              {ann.author_name || 'Investigator'}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                              {ann.created_at ? ann.created_at.slice(0, 16).replace('T', ' ') : ''}
+                                            </Typography>
+                                          </Box>
+                                          <Typography variant="body2" sx={{ fontSize: '12.5px', mb: 1 }}>
+                                            {ann.body}
+                                          </Typography>
+                                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                              Body SHA-256:
+                                            </Typography>
+                                            <HashText hash={ann.body_sha256} truncate />
+                                          </Box>
+                                        </Box>
+                                      ))
+                                    ) : (
+                                      <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
+                                        No annotations recorded yet for this evidence item.
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 )}
+
+                                {/* Tab 2: Links */}
                                 {(activeTab[item.id] || 0) === 2 && (
-                                  <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
-                                    Defensible links to persons, events, and timeline notes.
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                                        DEFENSIBLE ENTITY LINKS
+                                      </Typography>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        startIcon={<AddIcon sx={{ fontSize: 14 }} />}
+                                        onClick={() => {
+                                          setActiveLinkItem(item);
+                                          setLinkDialogOpen(true);
+                                        }}
+                                        sx={{ fontSize: '11px', py: 0.2 }}
+                                      >
+                                        Create Link
+                                      </Button>
+                                    </Box>
+
+                                    {tabLinks[item.id] && tabLinks[item.id].length > 0 ? (
+                                      tabLinks[item.id].map((link) => (
+                                        <Box
+                                          key={link.id}
+                                          sx={{
+                                            p: 1.5,
+                                            backgroundColor: 'background.default',
+                                            borderRadius: 1,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                          }}
+                                        >
+                                          <Box>
+                                            <Chip label={link.target_type} size="small" sx={{ mr: 1, fontSize: '10px' }} />
+                                            <Typography component="span" variant="body2" sx={{ fontWeight: 500, fontSize: '12.5px' }}>
+                                              {link.relation}
+                                            </Typography>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary', display: 'block', mt: 0.3 }}>
+                                              Target ID: {link.target_id}
+                                            </Typography>
+                                          </Box>
+                                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                            {link.created_at ? link.created_at.slice(0, 10) : ''}
+                                          </Typography>
+                                        </Box>
+                                      ))
+                                    ) : (
+                                      <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
+                                        No linked entities found.
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 )}
+
+                                {/* Tab 3: Transfers */}
                                 {(activeTab[item.id] || 0) === 3 && (
-                                  <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
-                                    Past and pending custody transfer history.
-                                  </Typography>
+                                  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                                    <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1 }}>
+                                      <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.secondary' }}>
+                                        CUSTODY TRANSFER HISTORY
+                                      </Typography>
+                                      <Button
+                                        size="small"
+                                        variant="outlined"
+                                        onClick={() => handleOpenTransfer(item)}
+                                        sx={{ fontSize: '11px', py: 0.2 }}
+                                      >
+                                        Transfer Custody
+                                      </Button>
+                                    </Box>
+
+                                    {tabTransfers[item.id] && tabTransfers[item.id].length > 0 ? (
+                                      tabTransfers[item.id].map((tr) => (
+                                        <Box
+                                          key={tr.id}
+                                          sx={{
+                                            p: 1.5,
+                                            backgroundColor: 'background.default',
+                                            borderRadius: 1,
+                                            border: '1px solid',
+                                            borderColor: 'divider',
+                                            display: 'flex',
+                                            justifyContent: 'space-between',
+                                            alignItems: 'center',
+                                          }}
+                                        >
+                                          <Box>
+                                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                                              <StatusChip status={tr.status} />
+                                              <Typography variant="body2" sx={{ fontWeight: 500, fontSize: '12.5px' }}>
+                                                From: {tr.from_user_name || 'Custodian'} ➔ To: {tr.to_user_name || tr.to_location || 'Recipient'}
+                                              </Typography>
+                                            </Box>
+                                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                              Reason: {tr.reason} • Dispatched: {tr.requested_at ? tr.requested_at.slice(0, 16).replace('T', ' ') : ''}
+                                            </Typography>
+                                          </Box>
+
+                                          {tr.status === 'PENDING_ACK' && (!tr.to_user_id || tr.to_user_id === user?.id) && (
+                                            <Button
+                                              size="small"
+                                              variant="contained"
+                                              onClick={() => {
+                                                setActiveAckTransfer({
+                                                  id: tr.id,
+                                                  evidenceNumber: item.evidence_number,
+                                                  sendHash: tr.hash_at_send,
+                                                });
+                                                setAckDialogOpen(true);
+                                              }}
+                                              sx={{ fontSize: '11px', py: 0.2 }}
+                                            >
+                                              Acknowledge
+                                            </Button>
+                                          )}
+                                        </Box>
+                                      ))
+                                    ) : (
+                                      <Typography variant="body2" sx={{ fontSize: '12px', color: 'text.secondary' }}>
+                                        No transfer records found for this evidence item.
+                                      </Typography>
+                                    )}
+                                  </Box>
                                 )}
                               </Box>
                             </Box>
@@ -740,7 +1104,7 @@ export const EvidencePage: React.FC = () => {
         anchorEl={actionAnchor}
         open={Boolean(actionAnchor)}
         onClose={() => setActionAnchor(null)}
-        PaperProps={{ sx: { minWidth: 220, fontSize: '13px' } }}
+        PaperProps={{ sx: { minWidth: 230, fontSize: '13px' } }}
       >
         <MenuItem
           onClick={() => {
@@ -750,6 +1114,63 @@ export const EvidencePage: React.FC = () => {
           sx={{ fontSize: '13px' }}
         >
           Verify Cryptographic Hash
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedActionItem) handleOpenTransfer(selectedActionItem);
+            setActionAnchor(null);
+          }}
+          sx={{ fontSize: '13px' }}
+        >
+          Transfer Custody
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedActionItem) {
+              setActiveAnnotationItem(selectedActionItem);
+              setAnnotationDialogOpen(true);
+            }
+            setActionAnchor(null);
+          }}
+          sx={{ fontSize: '13px' }}
+        >
+          Add Annotation
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedActionItem) {
+              setActiveLinkItem(selectedActionItem);
+              setLinkDialogOpen(true);
+            }
+            setActionAnchor(null);
+          }}
+          sx={{ fontSize: '13px' }}
+        >
+          Create Defensible Link
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedActionItem) {
+              setActiveLegalHoldItem(selectedActionItem);
+              setLegalHoldDialogOpen(true);
+            }
+            setActionAnchor(null);
+          }}
+          sx={{ fontSize: '13px' }}
+        >
+          {selectedActionItem?.legal_hold ? 'Release Legal Hold' : 'Place Legal Hold'}
+        </MenuItem>
+        <MenuItem
+          onClick={() => {
+            if (selectedActionItem) {
+              setActiveExportItem(selectedActionItem);
+              setExportDialogOpen(true);
+            }
+            setActionAnchor(null);
+          }}
+          sx={{ fontSize: '13px' }}
+        >
+          Request Export Package
         </MenuItem>
         <MenuItem
           onClick={() => {
@@ -882,7 +1303,131 @@ export const EvidencePage: React.FC = () => {
           Reset Filters
         </Button>
       </Popover>
+
+      {/* Workflow Dialogs */}
+      <CreateEvidenceDialog
+        open={createDialogOpen}
+        onClose={() => setCreateDialogOpen(false)}
+        onCreated={() => {
+          fetchEvidence();
+        }}
+        cases={cases}
+      />
+
+      {activeTransferItem && (
+        <TransferCustodyDialog
+          open={transferDialogOpen}
+          onClose={() => {
+            setTransferDialogOpen(false);
+            setActiveTransferItem(null);
+          }}
+          onTransferred={() => {
+            fetchEvidence();
+            if (activeTransferItem) {
+              loadSubTabData(activeTransferItem, 3);
+            }
+          }}
+          evidenceId={activeTransferItem.id}
+          evidenceNumber={activeTransferItem.evidence_number}
+          users={users}
+        />
+      )}
+
+      {activeAckTransfer && (
+        <AcknowledgeTransferDialog
+          open={ackDialogOpen}
+          onClose={() => {
+            setAckDialogOpen(false);
+            setActiveAckTransfer(null);
+          }}
+          onAcknowledged={() => {
+            fetchEvidence();
+            if (expandedId) {
+              const it = items.find((x) => x.id === expandedId);
+              if (it) loadSubTabData(it, 3);
+            }
+          }}
+          transferId={activeAckTransfer.id}
+          evidenceNumber={activeAckTransfer.evidenceNumber}
+          sendHash={activeAckTransfer.sendHash}
+        />
+      )}
+
+      {activeAnnotationItem && (
+        <AddAnnotationDialog
+          open={annotationDialogOpen}
+          onClose={() => {
+            setAnnotationDialogOpen(false);
+            setActiveAnnotationItem(null);
+          }}
+          onAdded={() => {
+            if (activeAnnotationItem) {
+              setTabAnnotations((prev) => {
+                const next = { ...prev };
+                delete next[activeAnnotationItem.id];
+                return next;
+              });
+              loadSubTabData(activeAnnotationItem, 1);
+            }
+          }}
+          evidenceId={activeAnnotationItem.id}
+          evidenceNumber={activeAnnotationItem.evidence_number}
+        />
+      )}
+
+      {activeLinkItem && (
+        <CreateLinkDialog
+          open={linkDialogOpen}
+          onClose={() => {
+            setLinkDialogOpen(false);
+            setActiveLinkItem(null);
+          }}
+          onLinked={() => {
+            if (activeLinkItem) {
+              setTabLinks((prev) => {
+                const next = { ...prev };
+                delete next[activeLinkItem.id];
+                return next;
+              });
+              loadSubTabData(activeLinkItem, 2);
+            }
+          }}
+          evidenceId={activeLinkItem.id}
+          evidenceNumber={activeLinkItem.evidence_number}
+          caseId={activeLinkItem.case_id}
+        />
+      )}
+
+      {activeLegalHoldItem && (
+        <LegalHoldDialog
+          open={legalHoldDialogOpen}
+          onClose={() => {
+            setLegalHoldDialogOpen(false);
+            setActiveLegalHoldItem(null);
+          }}
+          onCompleted={() => {
+            fetchEvidence();
+          }}
+          evidenceId={activeLegalHoldItem.id}
+          evidenceNumber={activeLegalHoldItem.evidence_number}
+          isHeld={activeLegalHoldItem.legal_hold}
+        />
+      )}
+
+      {activeExportItem && (
+        <ExportPackageDialog
+          open={exportDialogOpen}
+          onClose={() => {
+            setExportDialogOpen(false);
+            setActiveExportItem(null);
+          }}
+          onRequested={() => {
+            fetchEvidence();
+          }}
+          evidenceId={activeExportItem.id}
+          evidenceNumber={activeExportItem.evidence_number}
+        />
+      )}
     </Box>
   );
 };
-

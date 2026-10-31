@@ -9,6 +9,8 @@ import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AppShell } from './layout/AppShell';
 import { LoginPage } from './pages/LoginPage';
 import { EvidencePage } from './pages/EvidencePage';
+import { TransfersPage } from './pages/TransfersPage';
+import { ApprovalsPage } from './pages/ApprovalsPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 const queryClient = new QueryClient({
@@ -49,8 +51,8 @@ export default function App() {
                   <Route path="/evidence" element={<EvidencePage />} />
                   <Route path="/dashboard" element={<PlaceholderPage title="Dashboard" subtitle="System Status and Oversight" />} />
                   <Route path="/cases" element={<PlaceholderPage title="Cases" subtitle="Active Investigations" />} />
-                  <Route path="/approvals" element={<PlaceholderPage title="Approvals" subtitle="Dual Authorization Queue" />} />
-                  <Route path="/transfers" element={<PlaceholderPage title="Transfers" subtitle="Custody Transfers" />} />
+                  <Route path="/approvals" element={<ApprovalsPage />} />
+                  <Route path="/transfers" element={<TransfersPage />} />
                   <Route path="/locations" element={<PlaceholderPage title="Item Locations" subtitle="Physical & Digital Custody" />} />
                   <Route path="/people" element={<PlaceholderPage title="People Directory" subtitle="Persons of Interest & Contacts" />} />
                   <Route path="/audit" element={<PlaceholderPage title="Audit Log" subtitle="Append-only Hash Chained Journal" />} />

@@ -31,3 +31,4 @@ export const PlaceholderPage: React.FC<PlaceholderPageProps> = ({ title, subtitl
     </Box>
   );
 };
+
