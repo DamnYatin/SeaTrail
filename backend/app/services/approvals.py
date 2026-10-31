@@ -4,8 +4,9 @@ Enforces two-person integrity on sensitive workflows: EXTERNAL_TRANSFER,
 EXPORT_PACKAGE, LEGAL_HOLD_RELEASE, and DISPOSAL.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from sqlalchemy.orm import Session
 
 from app.config import settings
@@ -21,9 +22,9 @@ def create_approval_request(
     kind: ApprovalKind,
     requester: User,
     justification: str,
-    evidence_id: Optional[str] = None,
-    payload: Optional[Dict[str, Any]] = None,
-    ip: Optional[str] = None,
+    evidence_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    ip: str | None = None,
 ) -> ApprovalRequest:
     """Create a pending dual-authorization request."""
     if len(justification.strip()) < 10:
@@ -33,7 +34,7 @@ def create_approval_request(
             status_code=400,
         )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = now + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
 
     req = ApprovalRequest(
@@ -67,31 +68,41 @@ def decide_approval_request(
     decider: User,
     approve: bool,
     decision_note: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> ApprovalRequest:
     """
     Decide an approval request (Supervisor only, cannot approve own request).
     """
     req = session.query(ApprovalRequest).filter(ApprovalRequest.id == request_id).first()
     if not req:
-        raise AppError(code="APPROVAL_NOT_FOUND", message="Approval request not found", status_code=404)
+        raise AppError(
+            code="APPROVAL_NOT_FOUND", message="Approval request not found", status_code=404
+        )
 
     if req.status != ApprovalStatus.PENDING:
-        raise AppError(code="APPROVAL_NOT_PENDING", message=f"Approval request is {req.status.value}", status_code=400)
+        raise AppError(
+            code="APPROVAL_NOT_PENDING",
+            message=f"Approval request is {req.status.value}",
+            status_code=400,
+        )
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     expires_at = req.expires_at
     if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
+        expires_at = expires_at.replace(tzinfo=UTC)
 
     if expires_at < now:
         req.status = ApprovalStatus.EXPIRED
         session.commit()
-        raise AppError(code="APPROVAL_EXPIRED", message="Approval request has expired", status_code=400)
+        raise AppError(
+            code="APPROVAL_EXPIRED", message="Approval request has expired", status_code=400
+        )
 
     # Check caller is supervisor
     if decider.role != UserRole.SUPERVISOR:
-        raise AppError(code="FORBIDDEN", message="Only supervisors can decide approvals", status_code=403)
+        raise AppError(
+            code="FORBIDDEN", message="Only supervisors can decide approvals", status_code=403
+        )
 
     # Check two-person rule: decider cannot be requester
     if req.requested_by == decider.id:
@@ -125,6 +136,7 @@ def decide_approval_request(
     # If external transfer was approved, advance the custody transfer to PENDING_ACK
     if approve and req.kind == ApprovalKind.EXTERNAL_TRANSFER:
         from app.models.custody import CustodyTransfer, TransferStatus
+
         transfer = (
             session.query(CustodyTransfer)
             .filter(CustodyTransfer.approval_request_id == req.id)

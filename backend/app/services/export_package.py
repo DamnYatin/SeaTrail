@@ -10,22 +10,20 @@ import io
 import json
 import os
 import zipfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, Optional, Tuple
+from typing import Any
 
 import pyzipper
-from datetime import datetime, timedelta, timezone
 from cryptography.hazmat.primitives import serialization
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.errors import AppError
-from app.logging import logger
 from app.models.approvals import ApprovalKind, ApprovalRequest, ApprovalStatus
 from app.models.audit import AuditLog
-from app.models.evidence import EvidenceItem, IntegrityStateEnum
+from app.models.evidence import EvidenceItem
 from app.models.exports import ExportPackage
 from app.models.users import User
 from app.services import (
@@ -40,7 +38,9 @@ from app.services.audit_chain import AuditAction, append
 
 
 def _canonicalize(data: Any) -> bytes:
-    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def create_export_request(
@@ -50,7 +50,7 @@ def create_export_request(
     justification: str,
     include_bsa_certificate: bool = True,
     encrypt: bool = False,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> ApprovalRequest:
     """
     Initiate an export request requiring dual-authorization approval.
@@ -59,7 +59,7 @@ def create_export_request(
     if not evidence:
         raise AppError(code="NOT_FOUND", message="Evidence not found", status_code=404)
 
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
+    expires_at = datetime.now(UTC) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
     req = ApprovalRequest(
         kind=ApprovalKind.EXPORT_PACKAGE,
         case_id=evidence.case_id,
@@ -96,8 +96,8 @@ def build_export_package(
     session: Session,
     approval_id: str,
     actor: User,
-    passphrase: Optional[str] = None,
-    ip: Optional[str] = None,
+    passphrase: str | None = None,
+    ip: str | None = None,
 ) -> ExportPackage:
     """
     Assemble the complete cryptographic export package after approval.
@@ -107,14 +107,20 @@ def build_export_package(
         raise AppError(code="NOT_FOUND", message="Approval request not found", status_code=404)
 
     if approval.status != ApprovalStatus.APPROVED:
-        raise AppError(code="NOT_APPROVED", message=f"Approval status is {approval.status.value}", status_code=409)
+        raise AppError(
+            code="NOT_APPROVED",
+            message=f"Approval status is {approval.status.value}",
+            status_code=409,
+        )
 
     evidence = session.query(EvidenceItem).filter(EvidenceItem.id == approval.evidence_id).first()
     if not evidence:
         raise AppError(code="NOT_FOUND", message="Evidence item not found", status_code=404)
 
     # 1. Verify evidence integrity first
-    integ_res = integrity.verify_evidence(session=session, evidence=evidence, actor=actor, trigger="EXPORT_BUILD", ip=ip)
+    integ_res = integrity.verify_evidence(
+        session=session, evidence=evidence, actor=actor, trigger="EXPORT_BUILD", ip=ip
+    )
     if not integ_res.match:
         raise AppError(
             code="INTEGRITY_COMPROMISED",
@@ -170,7 +176,7 @@ def build_export_package(
 
     manifest_data = {
         "export_version": "1.0",
-        "created_at": datetime.now(timezone.utc).isoformat(),
+        "created_at": datetime.now(UTC).isoformat(),
         "evidence": {
             "evidence_number": evidence.evidence_number,
             "item_name": evidence.item_name,
@@ -227,7 +233,7 @@ def build_export_package(
     readme_text = (
         f"SEALTRAIL DIGITAL EVIDENCE EXPORT PACKAGE\n"
         f"Evidence Number: {evidence.evidence_number}\n"
-        f"Generated UTC: {datetime.now(timezone.utc).isoformat()}\n\n"
+        f"Generated UTC: {datetime.now(UTC).isoformat()}\n\n"
         f"INSTRUCTIONS FOR VERIFICATION:\n"
         f"This export package contains cryptographic proofs and audit trails.\n"
         f"To verify this package completely offline:\n"
@@ -236,10 +242,10 @@ def build_export_package(
         f"The verifier validates all file hashes against SHA256SUMS.txt,\n"
         f"re-checks the continuous hash chain of all audit entries in manifest.json,\n"
         f"and verifies the Ed25519 digital signature with PUBLIC_KEY.pem.\n"
-    ).encode("utf-8")
+    ).encode()
 
     # 8. Compute checksums for SHA256SUMS.txt
-    files_to_pack: Dict[str, bytes] = {
+    files_to_pack: dict[str, bytes] = {
         f"evidence/{evidence_filename}": evidence_bytes,
         "manifest.json": manifest_bytes,
         "manifest.sig": manifest_sig_bytes,
@@ -284,8 +290,10 @@ def build_export_package(
     package_size = len(zip_bytes)
 
     # 10. Upload to S3/MinIO exports bucket
-    timestamp_slug = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%SZ")
-    export_key = f"exports/{evidence.evidence_number}/{evidence.evidence_number}_{timestamp_slug}.zip"
+    timestamp_slug = datetime.now(UTC).strftime("%Y%m%d_%H%M%SZ")
+    export_key = (
+        f"exports/{evidence.evidence_number}/{evidence.evidence_number}_{timestamp_slug}.zip"
+    )
     storage.put_stream(
         bucket=settings.S3_BUCKET_EXPORTS,
         key=export_key,
@@ -307,7 +315,7 @@ def build_export_package(
     session.add(export)
 
     approval.status = ApprovalStatus.EXECUTED
-    approval.executed_at = datetime.now(timezone.utc)
+    approval.executed_at = datetime.now(UTC)
     session.flush()
 
     # 12. Audit event
@@ -334,8 +342,8 @@ def get_export_download(
     session: Session,
     export_id: str,
     actor: User,
-    ip: Optional[str] = None,
-) -> Tuple[io.BytesIO, str, str]:
+    ip: str | None = None,
+) -> tuple[io.BytesIO, str, str]:
     """
     Download export package, re-verifying hash and auditing event.
     Returns (stream, sha256, filename).
@@ -350,7 +358,9 @@ def get_export_download(
     # Re-verify hash
     actual_hash = hashlib.sha256(data).hexdigest()
     if actual_hash != export.package_sha256:
-        raise AppError(code="HASH_MISMATCH", message="Stored export package hash mismatch", status_code=500)
+        raise AppError(
+            code="HASH_MISMATCH", message="Stored export package hash mismatch", status_code=500
+        )
 
     export.download_count += 1
     session.flush()

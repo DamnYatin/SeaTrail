@@ -2,12 +2,13 @@
 Custody report schemas.
 """
 
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
 class ReportVerifyRequest(BaseModel):
-    report: Dict[str, Any]
+    report: dict[str, Any]
 
 
 class ReportVerifyResponse(BaseModel):
@@ -15,4 +16,4 @@ class ReportVerifyResponse(BaseModel):
     signature_valid: bool
     report_hash_valid: bool
     audit_entries_match: bool
-    details: Dict[str, Any] = {}
+    details: dict[str, Any] = {}

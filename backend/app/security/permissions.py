@@ -4,7 +4,6 @@ Defines Permission enum, Role enum, and the exact matrix specified in AGENTS.md 
 """
 
 import enum
-from typing import Dict, Set
 
 from app.models.users import UserRole
 
@@ -35,7 +34,7 @@ class Permission(str, enum.Enum):
 # Matrix mapping roles to their allowed permissions
 # Note: Membership and dynamic attributes (lead only, current custodian, etc.)
 # are checked at enforcement time in dependencies/services.
-ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
+ROLE_PERMISSIONS: dict[UserRole, set[Permission]] = {
     UserRole.ADMIN: {
         Permission.MANAGE_USERS,
         Permission.READ_AUDIT_LOG,
@@ -62,27 +61,27 @@ ROLE_PERMISSIONS: Dict[UserRole, Set[Permission]] = {
     UserRole.INVESTIGATOR: {
         Permission.CREATE_CASE,
         Permission.MANAGE_CASE_MEMBERS,  # Lead only
-        Permission.VIEW_CASE_METADATA,   # Member only
-        Permission.REGISTER_EVIDENCE,    # Member only
-        Permission.VERIFY_HASH,          # Member only
-        Permission.DOWNLOAD_WORKING_COPY,# Member only
-        Permission.INITIATE_TRANSFER,    # Current custodian
+        Permission.VIEW_CASE_METADATA,  # Member only
+        Permission.REGISTER_EVIDENCE,  # Member only
+        Permission.VERIFY_HASH,  # Member only
+        Permission.DOWNLOAD_WORKING_COPY,  # Member only
+        Permission.INITIATE_TRANSFER,  # Current custodian
         Permission.ACKNOWLEDGE_RECEIPT,  # Designated receiver
-        Permission.COLLABORATE,          # Member only
-        Permission.REQUEST_EXPORT,       # Member only
+        Permission.COLLABORATE,  # Member only
+        Permission.REQUEST_EXPORT,  # Member only
     },
     UserRole.CUSTODIAN: {
-        Permission.VIEW_CASE_METADATA,   # Member only
-        Permission.REGISTER_EVIDENCE,    # Member only
-        Permission.VERIFY_HASH,          # Member only
-        Permission.DOWNLOAD_WORKING_COPY,# Member only
-        Permission.INITIATE_TRANSFER,    # Current custodian
+        Permission.VIEW_CASE_METADATA,  # Member only
+        Permission.REGISTER_EVIDENCE,  # Member only
+        Permission.VERIFY_HASH,  # Member only
+        Permission.DOWNLOAD_WORKING_COPY,  # Member only
+        Permission.INITIATE_TRANSFER,  # Current custodian
         Permission.ACKNOWLEDGE_RECEIPT,  # Designated receiver
-        Permission.COLLABORATE,          # Member only
+        Permission.COLLABORATE,  # Member only
     },
     UserRole.AUDITOR: {
-        Permission.VIEW_CASE_METADATA,   # Read all cases/evidence metadata
-        Permission.VERIFY_HASH,          # Verify hashes
+        Permission.VIEW_CASE_METADATA,  # Read all cases/evidence metadata
+        Permission.VERIFY_HASH,  # Verify hashes
         Permission.READ_AUDIT_LOG,
         Permission.VERIFY_CHAIN,
         Permission.READ_ALERTS,

@@ -3,7 +3,8 @@ Export package records model.
 """
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -23,7 +24,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ExportPackage(Base):

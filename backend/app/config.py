@@ -4,9 +4,8 @@ Loads settings via pydantic-settings and fails fast if any required setting is e
 """
 
 from pathlib import Path
-from typing import List
 
-from pydantic import Field, field_validator
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -75,7 +74,7 @@ class Settings(BaseSettings):
     SEED_EMAIL_DOMAIN: str = Field(default="sealtrail.local")
 
     @property
-    def cors_origins_list(self) -> List[str]:
+    def cors_origins_list(self) -> list[str]:
         return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
     model_config = SettingsConfigDict(

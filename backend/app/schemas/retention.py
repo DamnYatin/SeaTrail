@@ -2,8 +2,8 @@
 Retention policies, legal holds, and disposal schemas.
 """
 
-from datetime import date, datetime
-from typing import Optional
+from datetime import date
+
 from pydantic import BaseModel, Field
 
 
@@ -11,7 +11,7 @@ class RetentionPolicyResponse(BaseModel):
     id: str
     name: str
     retain_days: int
-    description: Optional[str] = None
+    description: str | None = None
 
     class Config:
         from_attributes = True
@@ -20,12 +20,12 @@ class RetentionPolicyResponse(BaseModel):
 class RetentionPolicyCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100)
     retain_days: int = Field(..., ge=1)
-    description: Optional[str] = None
+    description: str | None = None
 
 
 class LegalHoldRequest(BaseModel):
     reason: str = Field(..., min_length=5)
-    notes: Optional[str] = None
+    notes: str | None = None
 
 
 class LegalHoldReleaseRequest(BaseModel):
@@ -41,8 +41,8 @@ class RetentionDueItemResponse(BaseModel):
     evidence_number: str
     item_name: str
     case_id: str
-    case_number: Optional[str] = None
-    retention_until: Optional[date] = None
+    case_number: str | None = None
+    retention_until: date | None = None
     days_remaining: int
     legal_hold: bool
     status: str

@@ -4,7 +4,8 @@ Case management, memberships, and retention policy models.
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import relationship
 
@@ -33,7 +34,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class RetentionPolicy(Base):

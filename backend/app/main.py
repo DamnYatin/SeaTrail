@@ -4,8 +4,8 @@ SealTrail FastAPI application factory and lifespan configuration.
 
 import time
 import uuid
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
@@ -32,7 +32,8 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Initialize scheduler in single worker mode if required
     # (Stage 5 will initialize APScheduler)
     try:
-        from app.jobs.scheduler import start_scheduler, shutdown_scheduler
+        from app.jobs.scheduler import shutdown_scheduler, start_scheduler
+
         start_scheduler()
     except (ImportError, AttributeError):
         pass
@@ -42,6 +43,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("application_shutdown")
     try:
         from app.jobs.scheduler import shutdown_scheduler
+
         shutdown_scheduler()
     except (ImportError, AttributeError):
         pass
@@ -116,6 +118,7 @@ def create_app() -> FastAPI:
         retention,
         users,
     )
+
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(cases.router)

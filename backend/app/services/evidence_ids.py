@@ -3,7 +3,6 @@ Evidence identification and Crockford base32 check character verification.
 """
 
 import re
-from typing import Tuple
 
 CROCKFORD_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
 

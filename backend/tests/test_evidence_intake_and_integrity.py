@@ -5,8 +5,8 @@ Tests 4 and 5: Evidence intake pipeline, client hash verification, three-way int
 import hashlib
 import io
 import json
+
 import pytest
-from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
@@ -14,11 +14,11 @@ from app.db import get_db
 from app.main import create_app
 from app.models.audit import AuditLog
 from app.models.cases import Case, CaseMember, CaseMemberRole, CaseStatus
-from app.models.evidence import EvidenceItem, EvidenceType, EvidenceStatus, IntegrityStateEnum
+from app.models.evidence import EvidenceItem
 from app.models.users import User, UserRole
 from app.security.passwords import hash_password
 from app.security.tokens import create_access_token
-from app.services import evidence_ids, integrity, labels, storage
+from app.services import evidence_ids, storage
 
 
 @pytest.fixture
@@ -79,7 +79,9 @@ def intake_setup(db_session: Session):
     return {"user": inv, "case": case, "token": token}
 
 
-def test_4_intake_pipeline_and_validation(client: TestClient, intake_setup: dict, db_session: Session):
+def test_4_intake_pipeline_and_validation(
+    client: TestClient, intake_setup: dict, db_session: Session
+):
     """Test 4: Correct hash, CLIENT_HASH_MISMATCH, oversize upload, check character validation."""
     token = intake_setup["token"]
     case = intake_setup["case"]
@@ -150,13 +152,15 @@ def test_4_intake_pipeline_and_validation(client: TestClient, intake_setup: dict
     assert rejected_audit is not None
 
 
-def test_5_three_way_verification_and_labels(client: TestClient, intake_setup: dict, db_session: Session):
+def test_5_three_way_verification_and_labels(
+    client: TestClient, intake_setup: dict, db_session: Session
+):
     """Test 5: Three-way verification: object replaced out of band, row hash edited, label rendering."""
     token = intake_setup["token"]
     case = intake_setup["case"]
 
     test_content = b"Verifiable secure file content"
-    expected_hash = hashlib.sha256(test_content).hexdigest()
+    hashlib.sha256(test_content).hexdigest()
 
     meta = {"type": "FILE", "item_name": "target.bin"}
     create_resp = client.post(
@@ -169,32 +173,41 @@ def test_5_three_way_verification_and_labels(client: TestClient, intake_setup: d
     ev_id = create_resp.json()["id"]
 
     # Clean verification passes
-    verify_resp = client.post(f"/api/v1/evidence/{ev_id}/verify", headers={"Authorization": f"Bearer {token}"})
+    verify_resp = client.post(
+        f"/api/v1/evidence/{ev_id}/verify", headers={"Authorization": f"Bearer {token}"}
+    )
     assert verify_resp.status_code == 200
     assert verify_resp.json()["status"] == "OK"
     assert verify_resp.json()["match"] is True
 
     # 1. Simulate object overwritten out of band (new version in storage)
     item = db_session.query(EvidenceItem).filter(EvidenceItem.id == ev_id).first()
-    new_version_id = storage.put_stream(
+    storage.put_stream(
         bucket=item.storage_bucket,
         key=item.storage_key,
         stream=io.BytesIO(b"Overwritten bad content"),
     )
 
-    replaced_res = client.post(f"/api/v1/evidence/{ev_id}/verify", headers={"Authorization": f"Bearer {token}"})
+    replaced_res = client.post(
+        f"/api/v1/evidence/{ev_id}/verify", headers={"Authorization": f"Bearer {token}"}
+    )
     assert replaced_res.status_code == 200
     assert replaced_res.json()["status"] == "OBJECT_REPLACED"
     assert replaced_res.json()["object_replaced"] is True
 
     # 2. Render controlled label PDF
-    label_resp = client.post(f"/api/v1/evidence/{ev_id}/label?size=standard", headers={"Authorization": f"Bearer {token}"})
+    label_resp = client.post(
+        f"/api/v1/evidence/{ev_id}/label?size=standard",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert label_resp.status_code == 200
     assert label_resp.headers["content-type"] == "application/pdf"
     assert label_resp.content.startswith(b"%PDF")
     assert len(label_resp.content) > 1000
 
     # Small format label
-    label_small_resp = client.post(f"/api/v1/evidence/{ev_id}/label?size=small", headers={"Authorization": f"Bearer {token}"})
+    label_small_resp = client.post(
+        f"/api/v1/evidence/{ev_id}/label?size=small", headers={"Authorization": f"Bearer {token}"}
+    )
     assert label_small_resp.status_code == 200
     assert label_small_resp.content.startswith(b"%PDF")

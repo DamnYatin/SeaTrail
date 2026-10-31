@@ -4,7 +4,7 @@ Produces compliant physical labels (90x50mm and 50x25mm) with verifiable QR code
 """
 
 import io
-from datetime import datetime, timezone
+
 import qrcode
 from reportlab.lib.units import mm
 from reportlab.pdfgen import canvas
@@ -46,6 +46,7 @@ def render_label_pdf(evidence: EvidenceItem, is_small: bool = False, reprint_num
     qr_url = f"{settings.APP_BASE_URL}/e/{evidence.evidence_number}"
     qr_buf = generate_qr_image(qr_url)
     from reportlab.lib.utils import ImageReader
+
     qr_reader = ImageReader(qr_buf)
 
     if not is_small:
@@ -72,7 +73,9 @@ def render_label_pdf(evidence: EvidenceItem, is_small: bool = False, reprint_num
         case_no = evidence.case.case_number if evidence.case else "N/A"
         p.drawString(4 * mm, 31 * mm, f"CASE: {case_no}")
         p.drawString(4 * mm, 26 * mm, f"TYPE: {evidence.type.value}")
-        p.drawString(4 * mm, 21 * mm, f"INTAKE: {evidence.intake_at.strftime('%Y-%m-%d %H:%M UTC')}")
+        p.drawString(
+            4 * mm, 21 * mm, f"INTAKE: {evidence.intake_at.strftime('%Y-%m-%d %H:%M UTC')}"
+        )
         p.drawString(4 * mm, 16 * mm, f"NAME: {evidence.item_name[:25]}")
 
         # Monospace SHA-256 prefix

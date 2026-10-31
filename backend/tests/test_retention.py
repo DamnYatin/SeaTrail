@@ -3,17 +3,17 @@ Test 12: Retention policies, legal holds, dual authorization hold release,
 and disposal enforcement with permanent tombstone.
 """
 
-from datetime import date, datetime, timedelta, timezone
 import hashlib
 import io
 import uuid
+from datetime import UTC, date, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.main import create_app
-from app.models.approvals import ApprovalKind, ApprovalRequest, ApprovalStatus
 from app.models.cases import Case, CaseClassification, CaseMember, CaseMemberRole, CaseStatus
 from app.models.evidence import EvidenceItem, EvidenceStatus, EvidenceType, IntegrityStateEnum
 from app.models.users import User, UserRole
@@ -65,10 +65,16 @@ def retention_setup(db_session: Session):
     db_session.add(case)
     db_session.flush()
 
-    db_session.add_all([
-        CaseMember(case_id=case.id, user_id=sup1.id, case_role=CaseMemberRole.LEAD, added_by=sup1.id),
-        CaseMember(case_id=case.id, user_id=sup2.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id),
-    ])
+    db_session.add_all(
+        [
+            CaseMember(
+                case_id=case.id, user_id=sup1.id, case_role=CaseMemberRole.LEAD, added_by=sup1.id
+            ),
+            CaseMember(
+                case_id=case.id, user_id=sup2.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id
+            ),
+        ]
+    )
     db_session.flush()
 
     content = b"Binary evidence data to be tested for retention and disposal"
@@ -83,7 +89,7 @@ def retention_setup(db_session: Session):
         item_name="RetentionTestFile",
         description="Evidence item for retention and disposal tests",
         collected_by_user_id=sup1.id,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         original_filename="dispose_test.bin",
         content_type="application/octet-stream",
         size_bytes=len(content),
@@ -114,7 +120,9 @@ def retention_setup(db_session: Session):
     return {"sup1": sup1, "sup2": sup2, "case": case, "item": item, "content": content}
 
 
-def test_12_retention_legal_hold_and_disposal(client: TestClient, db_session: Session, retention_setup):
+def test_12_retention_legal_hold_and_disposal(
+    client: TestClient, db_session: Session, retention_setup
+):
     """
     Test 12:
     - Retention policies listing and custom policy creation
@@ -127,13 +135,15 @@ def test_12_retention_legal_hold_and_disposal(client: TestClient, db_session: Se
     """
     sup1 = retention_setup["sup1"]
     sup2 = retention_setup["sup2"]
-    case = retention_setup["case"]
+    retention_setup["case"]
     item = retention_setup["item"]
     sup1_token = create_access_token(sup1.id, sup1.email, sup1.role.value)
     sup2_token = create_access_token(sup2.id, sup2.email, sup2.role.value)
 
     # 1. Retention policies API
-    resp_pol = client.get("/api/v1/retention/policies", headers={"Authorization": f"Bearer {sup1_token}"})
+    resp_pol = client.get(
+        "/api/v1/retention/policies", headers={"Authorization": f"Bearer {sup1_token}"}
+    )
     assert resp_pol.status_code == 200
     policies = resp_pol.json()
     assert len(policies) >= 3
@@ -141,7 +151,11 @@ def test_12_retention_legal_hold_and_disposal(client: TestClient, db_session: Se
     new_pol = client.post(
         "/api/v1/retention/policies",
         headers={"Authorization": f"Bearer {sup1_token}"},
-        json={"name": f"Custom Policy {uuid.uuid4().hex[:4]}", "retain_days": 180, "description": "Custom 6 months"},
+        json={
+            "name": f"Custom Policy {uuid.uuid4().hex[:4]}",
+            "retain_days": 180,
+            "description": "Custom 6 months",
+        },
     )
     assert new_pol.status_code == 200
 
@@ -242,7 +256,11 @@ def test_12_retention_legal_hold_and_disposal(client: TestClient, db_session: Se
         storage.get_stream("evidence", item.storage_key)
 
     # Audit history survives
-    audit_entries = db_session.query(audit_chain.AuditLog).filter(audit_chain.AuditLog.evidence_id == item.id).all()
+    audit_entries = (
+        db_session.query(audit_chain.AuditLog)
+        .filter(audit_chain.AuditLog.evidence_id == item.id)
+        .all()
+    )
     actions = [a.action for a in audit_entries]
     assert "EVIDENCE_REGISTERED" in actions
     assert "LEGAL_HOLD_PLACED" in actions

@@ -3,13 +3,13 @@ Custody reports router: signed JSON and PDF custody reports, and verification.
 """
 
 import io
-from typing import Optional
-from fastapi import APIRouter, Depends, Query, Request, Response, status
+
+from fastapi import APIRouter, Depends, Query, Request, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_permission
+from app.deps import require_permission
 from app.errors import AppError
 from app.models.evidence import EvidenceItem
 from app.models.users import User
@@ -30,7 +30,11 @@ def get_custody_report(
 ):
     evidence = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
     if not evidence:
-        raise AppError(code="NOT_FOUND", message="Evidence item not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="NOT_FOUND",
+            message="Evidence item not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     ip = request.client.host if request.client else None
     report_dict = custody_report.generate_custody_report_data(

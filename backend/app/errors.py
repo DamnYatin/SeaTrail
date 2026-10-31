@@ -10,10 +10,11 @@ Standard error definitions and handlers enforcing the unified error envelope:
 }
 """
 
-from typing import Any, Dict, Optional
+from typing import Any
+
 from fastapi import Request, status
-from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.logging import logger
@@ -25,7 +26,7 @@ class AppError(Exception):
         code: str,
         message: str,
         status_code: int = status.HTTP_400_BAD_REQUEST,
-        details: Optional[Dict[str, Any]] = None,
+        details: dict[str, Any] | None = None,
     ):
         super().__init__(message)
         self.code = code
@@ -38,8 +39,8 @@ def make_error_envelope(
     code: str,
     message: str,
     request_id: str,
-    details: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
+    details: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     return {
         "error": {
             "code": code,

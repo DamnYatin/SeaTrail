@@ -3,6 +3,7 @@ Argon2id password hashing and validation against system security policy.
 """
 
 import re
+
 from argon2 import PasswordHasher
 from argon2.exceptions import VerifyMismatchError
 

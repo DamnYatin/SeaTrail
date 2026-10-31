@@ -2,8 +2,7 @@
 Dual authorization approval endpoints.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -22,9 +21,15 @@ router = APIRouter(prefix="/api/v1/approvals", tags=["Approvals"])
 def serialize_approval(session: Session, req: ApprovalRequest) -> ApprovalResponse:
     resp = ApprovalResponse.model_validate(req)
     case = session.query(Case).filter(Case.id == req.case_id).first()
-    ev = session.query(EvidenceItem).filter(EvidenceItem.id == req.evidence_id).first() if req.evidence_id else None
+    ev = (
+        session.query(EvidenceItem).filter(EvidenceItem.id == req.evidence_id).first()
+        if req.evidence_id
+        else None
+    )
     req_u = session.query(User).filter(User.id == req.requested_by).first()
-    dec_u = session.query(User).filter(User.id == req.decided_by).first() if req.decided_by else None
+    dec_u = (
+        session.query(User).filter(User.id == req.decided_by).first() if req.decided_by else None
+    )
 
     if case:
         resp.case_number = case.case_number
@@ -37,16 +42,18 @@ def serialize_approval(session: Session, req: ApprovalRequest) -> ApprovalRespon
     return resp
 
 
-@router.get("", response_model=List[ApprovalResponse])
+@router.get("", response_model=list[ApprovalResponse])
 def list_approvals(
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     mine: bool = Query(False),
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[ApprovalResponse]:
+) -> list[ApprovalResponse]:
     """List approval requests (filter by status or requests authored by caller)."""
     if user.role == UserRole.ADMIN:
-        raise AppError(code="FORBIDDEN", message="Administrators cannot view approvals", status_code=403)
+        raise AppError(
+            code="FORBIDDEN", message="Administrators cannot view approvals", status_code=403
+        )
 
     query = session.query(ApprovalRequest)
     if mine:
@@ -110,17 +117,28 @@ def cancel_request(
     """Cancel pending request by the original requester."""
     req = session.query(ApprovalRequest).filter(ApprovalRequest.id == approval_id).first()
     if not req:
-        raise AppError(code="APPROVAL_NOT_FOUND", message="Approval request not found", status_code=404)
+        raise AppError(
+            code="APPROVAL_NOT_FOUND", message="Approval request not found", status_code=404
+        )
 
     if req.requested_by != user.id and user.role != UserRole.SUPERVISOR:
-        raise AppError(code="FORBIDDEN", message="Only the requester or a supervisor can cancel", status_code=403)
+        raise AppError(
+            code="FORBIDDEN",
+            message="Only the requester or a supervisor can cancel",
+            status_code=403,
+        )
 
     if req.status != ApprovalStatus.PENDING:
-        raise AppError(code="INVALID_STATE", message="Request cannot be cancelled in current status", status_code=400)
+        raise AppError(
+            code="INVALID_STATE",
+            message="Request cannot be cancelled in current status",
+            status_code=400,
+        )
 
     req.status = ApprovalStatus.CANCELLED
     ip = request.client.host if request.client else None
     from app.services.audit_chain import AuditAction, append
+
     append(
         session=session,
         actor=user,

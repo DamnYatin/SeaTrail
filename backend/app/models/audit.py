@@ -3,8 +3,9 @@ Append-only hash-chained audit log and signed checkpoints models.
 """
 
 import uuid
-from datetime import datetime, timezone
-from sqlalchemy import BigInteger, Column, DateTime, ForeignKey, JSON, String, Text
+from datetime import UTC, datetime
+
+from sqlalchemy import JSON, BigInteger, Column, DateTime, ForeignKey, String, Text
 
 from app.db import Base
 
@@ -14,7 +15,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class AuditLog(Base):
@@ -22,6 +23,7 @@ class AuditLog(Base):
     Append-only cryptographic hash-chained audit log.
     Every row commits in the same transaction as the corresponding state mutation.
     """
+
     __tablename__ = "audit_log"
 
     seq = Column(BigInteger, primary_key=True, autoincrement=False)
@@ -42,6 +44,7 @@ class AuditCheckpoint(Base):
     Append-only cryptographic checkpoints signed with Ed25519.
     Provides external cryptographic binding across sequence numbers.
     """
+
     __tablename__ = "audit_checkpoints"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)

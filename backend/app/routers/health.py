@@ -2,12 +2,10 @@
 Health check endpoints for container readiness and operational liveness.
 """
 
-from typing import Any, Dict
 from fastapi import APIRouter, Response, status
 from pydantic import BaseModel
 
 from app.config import settings
-from app.logging import logger
 
 router = APIRouter(tags=["Health"])
 
@@ -41,8 +39,10 @@ def readyz(response: Response) -> ReadyResponse:
     db_ok = True
     db_msg = "Database connected"
     try:
-        from app.db import get_engine
         from sqlalchemy import text
+
+        from app.db import get_engine
+
         engine = get_engine()
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
@@ -54,6 +54,7 @@ def readyz(response: Response) -> ReadyResponse:
     storage_msg = "Storage reachable"
     try:
         from app.services.storage import get_s3_client
+
         s3 = get_s3_client()
         s3.head_bucket(Bucket=settings.S3_BUCKET_EVIDENCE)
     except Exception as e:
@@ -65,6 +66,7 @@ def readyz(response: Response) -> ReadyResponse:
     try:
         from app.db import get_db_session
         from app.models.integrity import IntegrityState
+
         with get_db_session() as session:
             state = session.query(IntegrityState).first()
             if state and not state.chain_ok:

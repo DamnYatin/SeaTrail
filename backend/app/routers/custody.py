@@ -2,7 +2,6 @@
 Custody transfer endpoints: initiate, acknowledge receipt, reject, and cancel.
 """
 
-from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
@@ -10,8 +9,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.deps import get_case_with_access, get_current_user
 from app.errors import AppError
-from app.models.cases import Case
-from app.models.custody import CustodyTransfer, TransferStatus
+from app.models.custody import CustodyTransfer
 from app.models.evidence import EvidenceItem
 from app.models.users import User, UserRole
 from app.schemas.custody import TransferCreate, TransferRejectRequest, TransferResponse
@@ -36,7 +34,11 @@ def serialize_transfer(session: Session, t: CustodyTransfer) -> TransferResponse
     return resp
 
 
-@router.post("/api/v1/evidence/{evidence_id}/transfers", response_model=TransferResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/evidence/{evidence_id}/transfers",
+    response_model=TransferResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def request_transfer(
     evidence_id: str,
     req: TransferCreate,
@@ -66,26 +68,39 @@ def request_transfer(
     return serialize_transfer(session, t)
 
 
-@router.get("/api/v1/transfers", response_model=List[TransferResponse])
+@router.get("/api/v1/transfers", response_model=list[TransferResponse])
 def list_transfers(
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     mine: bool = Query(False),
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[TransferResponse]:
+) -> list[TransferResponse]:
     """List transfers with status and role filters."""
     if user.role == UserRole.ADMIN:
-        raise AppError(code="FORBIDDEN", message="Administrators cannot view custody transfers", status_code=403)
+        raise AppError(
+            code="FORBIDDEN",
+            message="Administrators cannot view custody transfers",
+            status_code=403,
+        )
 
     query = session.query(CustodyTransfer)
 
     if mine:
-        query = query.filter(or_(CustodyTransfer.from_user_id == user.id, CustodyTransfer.to_user_id == user.id))
+        query = query.filter(
+            or_(CustodyTransfer.from_user_id == user.id, CustodyTransfer.to_user_id == user.id)
+        )
     elif user.role not in (UserRole.SUPERVISOR, UserRole.AUDITOR):
         # Limit to cases user is member of
         from app.models.cases import CaseMember
-        user_case_ids = session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
-        ev_subquery = session.query(EvidenceItem.id).filter(EvidenceItem.case_id.in_(user_case_ids)).subquery()
+
+        user_case_ids = (
+            session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
+        )
+        ev_subquery = (
+            session.query(EvidenceItem.id)
+            .filter(EvidenceItem.case_id.in_(user_case_ids))
+            .subquery()
+        )
         query = query.filter(CustodyTransfer.evidence_id.in_(ev_subquery))
 
     if status_filter:

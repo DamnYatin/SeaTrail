@@ -5,11 +5,9 @@ Binds head sequence and hash into signed verifiable checkpoints.
 
 import base64
 import hashlib
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ed25519
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
@@ -39,7 +37,7 @@ def format_checkpoint_message(seq_to: int, head_hash: str, created_at_iso: str) 
     return msg.encode("utf-8")
 
 
-def create_checkpoint(session: Session, created_by: Optional[str] = None) -> Optional[AuditCheckpoint]:
+def create_checkpoint(session: Session, created_by: str | None = None) -> AuditCheckpoint | None:
     """
     Produce an Ed25519 signed checkpoint over the current chain head.
     """
@@ -47,7 +45,7 @@ def create_checkpoint(session: Session, created_by: Optional[str] = None) -> Opt
     if not last_entry:
         return None
 
-    now_dt = datetime.now(timezone.utc)
+    now_dt = datetime.now(UTC)
     created_at_iso = now_dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
     msg_bytes = format_checkpoint_message(last_entry.seq, last_entry.entry_hash, created_at_iso)
@@ -84,5 +82,7 @@ def verify_checkpoint(cp: AuditCheckpoint, expected_head_hash: str) -> bool:
         public_key.verify(sig_bytes, msg_bytes)
         return True
     except (InvalidSignature, ValueError, Exception) as e:
-        logger.warning("checkpoint_signature_verification_failed", checkpoint_id=cp.id, error=str(e))
+        logger.warning(
+            "checkpoint_signature_verification_failed", checkpoint_id=cp.id, error=str(e)
+        )
         return False

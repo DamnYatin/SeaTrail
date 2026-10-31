@@ -5,7 +5,7 @@ Evidence management routes: intake, search/list, detail, download, verify, and l
 import csv
 import io
 import json
-from typing import List, Optional
+
 from fastapi import (
     APIRouter,
     Depends,
@@ -18,7 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
-from sqlalchemy import desc, func, or_, select
+from sqlalchemy import or_, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -26,17 +26,16 @@ from app.deps import get_case_with_access, get_current_user, require_permission
 from app.errors import AppError
 from app.models.audit import AuditLog
 from app.models.cases import Case, CaseMember
-from app.models.evidence import EvidenceItem, EvidenceStatus, EvidenceType, IntegrityStateEnum
+from app.models.evidence import EvidenceItem
 from app.models.users import User, UserRole
 from app.schemas.evidence import (
-    EvidenceCreateMetadata,
     EvidenceListResponse,
     EvidenceResponse,
     EvidenceVerifyResponse,
 )
-from app.security.permissions import Permission, has_permission
+from app.security.permissions import Permission
 from app.services import intake, integrity, labels, storage
-from app.services.audit_chain import AuditAction, append, append_independent
+from app.services.audit_chain import AuditAction, append
 from app.services.evidence_ids import validate_evidence_number
 
 router = APIRouter(tags=["Evidence"])
@@ -66,22 +65,26 @@ def list_evidence(
     page_size: int = Query(25, ge=1, le=500),
     sort_by: str = Query("intake_at"),
     order: str = Query("desc"),
-    case_id: Optional[str] = None,
-    type: Optional[str] = None,
-    status_filter: Optional[str] = Query(None, alias="status"),
-    q: Optional[str] = None,
+    case_id: str | None = None,
+    type: str | None = None,
+    status_filter: str | None = Query(None, alias="status"),
+    q: str | None = None,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> EvidenceListResponse:
     """Search and filter evidence items with server-side pagination."""
     if user.role == UserRole.ADMIN:
-        raise AppError(code="FORBIDDEN", message="Administrators cannot view evidence", status_code=403)
+        raise AppError(
+            code="FORBIDDEN", message="Administrators cannot view evidence", status_code=403
+        )
 
     query = session.query(EvidenceItem)
 
     # Enforce case membership access control
     if user.role not in (UserRole.SUPERVISOR, UserRole.AUDITOR):
-        user_case_ids = session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
+        user_case_ids = (
+            session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
+        )
         query = query.filter(EvidenceItem.case_id.in_(select(user_case_ids)))
 
     if case_id:
@@ -130,39 +133,57 @@ def export_evidence_csv(
 ):
     """Export evidence metadata CSV (audited, working copy)."""
     if user.role == UserRole.ADMIN:
-        raise AppError(code="FORBIDDEN", message="Administrators cannot export evidence metadata", status_code=403)
+        raise AppError(
+            code="FORBIDDEN",
+            message="Administrators cannot export evidence metadata",
+            status_code=403,
+        )
 
     query = session.query(EvidenceItem)
     if user.role not in (UserRole.SUPERVISOR, UserRole.AUDITOR):
-        user_case_ids = session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
+        user_case_ids = (
+            session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
+        )
         query = query.filter(EvidenceItem.case_id.in_(select(user_case_ids)))
 
     items = query.order_by(EvidenceItem.intake_at.desc()).all()
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow([
-        "Evidence Number", "Case Number", "Item Name", "Type", "Status",
-        "SHA-256", "Size (Bytes)", "Current Custodian", "Location",
-        "Intake Date (UTC)", "Legal Hold"
-    ])
+    writer.writerow(
+        [
+            "Evidence Number",
+            "Case Number",
+            "Item Name",
+            "Type",
+            "Status",
+            "SHA-256",
+            "Size (Bytes)",
+            "Current Custodian",
+            "Location",
+            "Intake Date (UTC)",
+            "Legal Hold",
+        ]
+    )
 
     for it in items:
         case = session.query(Case).filter(Case.id == it.case_id).first()
         cust = session.query(User).filter(User.id == it.current_custodian_id).first()
-        writer.writerow([
-            it.evidence_number,
-            case.case_number if case else "",
-            it.item_name,
-            it.type.value,
-            it.status.value,
-            it.sha256,
-            it.size_bytes,
-            cust.full_name if cust else "",
-            it.current_location,
-            it.intake_at.strftime("%Y-%m-%d %H:%M:%S"),
-            it.legal_hold,
-        ])
+        writer.writerow(
+            [
+                it.evidence_number,
+                case.case_number if case else "",
+                it.item_name,
+                it.type.value,
+                it.status.value,
+                it.sha256,
+                it.size_bytes,
+                cust.full_name if cust else "",
+                it.current_location,
+                it.intake_at.strftime("%Y-%m-%d %H:%M:%S"),
+                it.legal_hold,
+            ]
+        )
 
     ip = request.client.host if request.client else None
     append(
@@ -181,13 +202,17 @@ def export_evidence_csv(
     )
 
 
-@router.post("/api/v1/cases/{case_id}/evidence", response_model=EvidenceResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/cases/{case_id}/evidence",
+    response_model=EvidenceResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def intake_evidence(
     case_id: str,
     request: Request,
     metadata: str = Form(...),
     file: UploadFile = File(...),
-    client_sha256: Optional[str] = Form(None),
+    client_sha256: str | None = Form(None),
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
 ) -> EvidenceResponse:
@@ -195,12 +220,16 @@ def intake_evidence(
     case = get_case_with_access(case_id, user, session, request=request, allow_observer=False)
 
     if user.role not in (UserRole.INVESTIGATOR, UserRole.CUSTODIAN, UserRole.SUPERVISOR):
-        raise AppError(code="FORBIDDEN", message="Role not authorized to intake evidence", status_code=403)
+        raise AppError(
+            code="FORBIDDEN", message="Role not authorized to intake evidence", status_code=403
+        )
 
     try:
         meta_dict = json.loads(metadata)
     except json.JSONDecodeError:
-        raise AppError(code="INVALID_METADATA", message="Metadata field must be valid JSON", status_code=400)
+        raise AppError(
+            code="INVALID_METADATA", message="Metadata field must be valid JSON", status_code=400
+        )
 
     ip = request.client.host if request.client else None
     item, verification = intake.register_evidence(
@@ -230,7 +259,9 @@ def get_evidence(
     """Get evidence details and audit EVIDENCE_VIEWED."""
     item = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
     if not item:
-        raise AppError(code="EVIDENCE_NOT_FOUND", message=f"Evidence {evidence_id} not found", status_code=404)
+        raise AppError(
+            code="EVIDENCE_NOT_FOUND", message=f"Evidence {evidence_id} not found", status_code=404
+        )
 
     get_case_with_access(item.case_id, user, session, request=request)
 
@@ -266,7 +297,9 @@ def get_evidence_by_number(
 
     item = session.query(EvidenceItem).filter(EvidenceItem.evidence_number == clean_number).first()
     if not item:
-        raise AppError(code="EVIDENCE_NOT_FOUND", message=f"Evidence {clean_number} not found", status_code=404)
+        raise AppError(
+            code="EVIDENCE_NOT_FOUND", message=f"Evidence {clean_number} not found", status_code=404
+        )
 
     get_case_with_access(item.case_id, user, session, request=request)
 
@@ -316,7 +349,7 @@ def download_evidence(
     evidence_id: str,
     request: Request,
     force: bool = Query(False),
-    force_reason: Optional[str] = Query(None),
+    force_reason: str | None = Query(None),
     session: Session = Depends(get_db),
     user: User = Depends(require_permission(Permission.DOWNLOAD_WORKING_COPY)),
 ):
@@ -326,7 +359,9 @@ def download_evidence(
     AUDITOR is forbidden from downloading working copies.
     """
     if user.role == UserRole.AUDITOR:
-        raise AppError(code="FORBIDDEN", message="Auditors cannot download working copies", status_code=403)
+        raise AppError(
+            code="FORBIDDEN", message="Auditors cannot download working copies", status_code=403
+        )
 
     item = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
     if not item:
@@ -345,7 +380,11 @@ def download_evidence(
                 action=AuditAction.EVIDENCE_DOWNLOADED,
                 case_id=item.case_id,
                 evidence_id=item.id,
-                payload={"forced": True, "justification": force_reason, "verdict": ver.status.value},
+                payload={
+                    "forced": True,
+                    "justification": force_reason,
+                    "verdict": ver.status.value,
+                },
                 ip=ip,
             )
         else:
@@ -356,7 +395,9 @@ def download_evidence(
                 details=ver.details,
             )
 
-    stream, ctype = storage.get_stream(item.storage_bucket, item.storage_key, item.storage_version_id)
+    stream, ctype = storage.get_stream(
+        item.storage_bucket, item.storage_key, item.storage_version_id
+    )
 
     append(
         session=session,
@@ -392,7 +433,9 @@ def print_label(
     get_case_with_access(item.case_id, user, session, request=request)
 
     item.label_print_count += 1
-    pdf_bytes = labels.render_label_pdf(item, is_small=(size == "small"), reprint_num=item.label_print_count)
+    pdf_bytes = labels.render_label_pdf(
+        item, is_small=(size == "small"), reprint_num=item.label_print_count
+    )
 
     ip = request.client.host if request.client else None
     append(
@@ -432,15 +475,17 @@ def get_evidence_custody(
     results = []
     for e in entries:
         actor = session.query(User).filter(User.id == e.actor_id).first() if e.actor_id else None
-        results.append({
-            "seq": e.seq,
-            "ts": e.ts.isoformat(),
-            "action": e.action,
-            "actor_id": e.actor_id,
-            "actor_name": actor.full_name if actor else "System",
-            "actor_role": e.actor_role,
-            "payload": e.payload,
-            "prev_hash": e.prev_hash,
-            "entry_hash": e.entry_hash,
-        })
+        results.append(
+            {
+                "seq": e.seq,
+                "ts": e.ts.isoformat(),
+                "action": e.action,
+                "actor_id": e.actor_id,
+                "actor_name": actor.full_name if actor else "System",
+                "actor_role": e.actor_role,
+                "payload": e.payload,
+                "prev_hash": e.prev_hash,
+                "entry_hash": e.entry_hash,
+            }
+        )
     return results

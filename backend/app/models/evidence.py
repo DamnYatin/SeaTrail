@@ -5,7 +5,8 @@ Distinguishes between immutable intake attributes and mutable lifecycle states.
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -52,7 +53,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class EvidenceItem(Base):

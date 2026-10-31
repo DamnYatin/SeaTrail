@@ -3,19 +3,17 @@ Pytest fixtures and database test harness.
 Provides in-memory SQLite engine with full SQL triggers mirroring PostgreSQL enforcement.
 """
 
-import os
 import pytest
-from datetime import datetime, timezone
 from sqlalchemy import create_engine, event, text
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import Session, sessionmaker
 
 from app.db import Base
-import app.models  # load all models
 
 
 @pytest.fixture(scope="session")
 def test_engine():
     from sqlalchemy.pool import StaticPool
+
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
@@ -33,27 +31,33 @@ def test_engine():
 
     # Create SQLite triggers mirroring PostgreSQL triggers
     from app.db import set_engine
+
     set_engine(engine)
     with engine.begin() as conn:
         # Append-only triggers on audit_log, audit_checkpoints, annotations, case_notes
         for table in ["audit_log", "audit_checkpoints", "annotations", "case_notes"]:
-            conn.execute(text(f"""
+            conn.execute(
+                text(f"""
                 CREATE TRIGGER trg_{table}_no_update
                 BEFORE UPDATE ON {table}
                 BEGIN
                     SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
                 END;
-            """))
-            conn.execute(text(f"""
+            """)
+            )
+            conn.execute(
+                text(f"""
                 CREATE TRIGGER trg_{table}_no_delete
                 BEFORE DELETE ON {table}
                 BEGIN
                     SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
                 END;
-            """))
+            """)
+            )
 
         # Chain continuity trigger on audit_log
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_chain_enforce
             BEFORE INSERT ON audit_log
             BEGIN
@@ -73,10 +77,12 @@ def test_engine():
                             END
                     END;
             END;
-        """))
+        """)
+        )
 
         # Immutability trigger on evidence_items
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_evidence_immutability
             BEFORE UPDATE ON evidence_items
             BEGIN
@@ -93,7 +99,8 @@ def test_engine():
                             RAISE(ABORT, 'IMMUTABILITY_VIOLATION: Cannot modify immutable evidence fields')
                     END;
             END;
-        """))
+        """)
+        )
 
     yield engine
     engine.dispose()
@@ -108,3 +115,24 @@ def db_session(test_engine):
     finally:
         session.rollback()
         session.close()
+
+
+@pytest.fixture
+def client(db_session: Session):
+    from fastapi.testclient import TestClient
+
+    from app.db import get_db
+    from app.main import create_app
+
+    app = create_app()
+
+    def override_get_db():
+        try:
+            yield db_session
+        finally:
+            pass
+
+    app.dependency_overrides[get_db] = override_get_db
+    with TestClient(app) as test_client:
+        yield test_client
+    app.dependency_overrides.clear()

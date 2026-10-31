@@ -8,14 +8,13 @@ import enum
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import desc, func, select, text
+from sqlalchemy import desc, func, text
 from sqlalchemy.orm import Session
 
 from app.db import get_db_session
-from app.logging import logger
 from app.models.audit import AuditCheckpoint, AuditLog
 from app.models.users import User
 
@@ -82,29 +81,29 @@ class ChainResult:
     checked: int
     head_seq: int
     head_hash: str
-    first_broken_seq: Optional[int] = None
-    reason: Optional[str] = None
+    first_broken_seq: int | None = None
+    reason: str | None = None
 
 
 def format_iso_utc(dt: datetime) -> str:
     """Format datetime as ISO-8601 UTC string with microseconds and Z suffix."""
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
     else:
-        dt = dt.astimezone(timezone.utc)
+        dt = dt.astimezone(UTC)
     return dt.strftime("%Y-%m-%dT%H:%M:%S.%fZ")
 
 
 def canonicalize_entry(
     seq: int,
     ts_str: str,
-    actor_id: Optional[str],
-    actor_role: Optional[str],
+    actor_id: str | None,
+    actor_role: str | None,
     action: str,
-    case_id: Optional[str],
-    evidence_id: Optional[str],
-    payload: Dict[str, Any],
-    ip: Optional[str],
+    case_id: str | None,
+    evidence_id: str | None,
+    payload: dict[str, Any],
+    ip: str | None,
 ) -> bytes:
     """
     Produce canonical bytes representation of audit log entry.
@@ -121,7 +120,9 @@ def canonicalize_entry(
         "seq": int(seq),
         "ts": ts_str,
     }
-    return json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(doc, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def compute_entry_hash(prev_hash: str, canonical_bytes: bytes) -> str:
@@ -139,7 +140,7 @@ def ensure_genesis_entry(session: Session) -> AuditLog:
     if existing:
         return existing
 
-    genesis_ts = datetime(2026, 1, 1, 0, 0, 0, 0, tzinfo=timezone.utc)
+    genesis_ts = datetime(2026, 1, 1, 0, 0, 0, 0, tzinfo=UTC)
     ts_str = format_iso_utc(genesis_ts)
     prev_hash = "0" * 64
     payload = {"system": "SealTrail", "version": "1.0.0"}
@@ -177,13 +178,13 @@ def ensure_genesis_entry(session: Session) -> AuditLog:
 
 def append(
     session: Session,
-    actor: Optional[Any],
+    actor: Any | None,
     action: AuditAction,
-    case_id: Optional[str] = None,
-    evidence_id: Optional[str] = None,
-    payload: Optional[Dict[str, Any]] = None,
-    ip: Optional[str] = None,
-    custom_ts: Optional[datetime] = None,
+    case_id: str | None = None,
+    evidence_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    ip: str | None = None,
+    custom_ts: datetime | None = None,
 ) -> AuditLog:
     """
     Append an entry to the audit log inside the current transaction.
@@ -191,7 +192,9 @@ def append(
     """
     bind = session.get_bind()
     if bind.dialect.name == "postgresql":
-        session.execute(text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": ADVISORY_LOCK_ID})
+        session.execute(
+            text("SELECT pg_advisory_xact_lock(:lock_id)"), {"lock_id": ADVISORY_LOCK_ID}
+        )
 
     # Read last entry
     last_entry = session.query(AuditLog).order_by(desc(AuditLog.seq)).first()
@@ -202,7 +205,7 @@ def append(
         next_seq = last_entry.seq + 1
         prev_hash = last_entry.entry_hash
 
-    entry_dt = custom_ts or datetime.now(timezone.utc)
+    entry_dt = custom_ts or datetime.now(UTC)
     ts_str = format_iso_utc(entry_dt)
 
     actor_id = None
@@ -252,12 +255,12 @@ def append(
 
 
 def append_independent(
-    actor: Optional[Any],
+    actor: Any | None,
     action: AuditAction,
-    case_id: Optional[str] = None,
-    evidence_id: Optional[str] = None,
-    payload: Optional[Dict[str, Any]] = None,
-    ip: Optional[str] = None,
+    case_id: str | None = None,
+    evidence_id: str | None = None,
+    payload: dict[str, Any] | None = None,
+    ip: str | None = None,
 ) -> AuditLog:
     """Append in its own transaction (for failed logins, access denied, etc.)."""
     with get_db_session() as session:
@@ -291,7 +294,7 @@ def verify_chain(session: Session) -> ChainResult:
     head_hash = expected_prev_hash
     head_seq = 0
 
-    recomputed_hashes: Dict[int, str] = {}
+    recomputed_hashes: dict[int, str] = {}
 
     offset = 0
     while offset < total_rows:

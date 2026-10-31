@@ -3,7 +3,8 @@ In-process background scheduler using APScheduler (single worker).
 Runs periodic chain verification, checkpoint creation, and anomaly checks.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 
@@ -26,7 +27,7 @@ def run_scheduled_chain_check():
     """
     with get_db_session() as session:
         res = audit_chain.verify_chain(session)
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
 
         state = session.query(IntegrityState).filter(IntegrityState.id == 1).first()
         if not state:

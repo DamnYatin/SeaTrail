@@ -3,19 +3,17 @@ Explainable security anomaly rules and alerts engine.
 No machine learning; strictly rule-based detection with proof links to audit sequences.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
 import zoneinfo
+from datetime import UTC, datetime, timedelta
+from typing import Any
+
 from sqlalchemy import desc, func
 from sqlalchemy.orm import Session
 
 from app.config import settings
-from app.logging import logger
 from app.models.alerts import Alert, AlertSeverity, AlertStatus
 from app.models.audit import AuditLog
 from app.models.custody import CustodyTransfer, TransferStatus
-from app.models.evidence import EvidenceItem
-from app.models.users import User
 from app.services.audit_chain import AuditAction, append
 
 
@@ -24,16 +22,19 @@ def create_or_dedupe_alert(
     rule: str,
     severity: AlertSeverity,
     explanation: str,
-    details: Dict[str, Any],
-    audit_seqs: List[int],
+    details: dict[str, Any],
+    audit_seqs: list[int],
     dedupe_key: str,
-    case_id: Optional[str] = None,
-    evidence_id: Optional[str] = None,
-) -> Optional[Alert]:
+    case_id: str | None = None,
+    evidence_id: str | None = None,
+) -> Alert | None:
     """Create alert if dedupe_key not already OPEN or ACKNOWLEDGED."""
     existing = (
         session.query(Alert)
-        .filter(Alert.dedupe_key == dedupe_key, Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]))
+        .filter(
+            Alert.dedupe_key == dedupe_key,
+            Alert.status.in_([AlertStatus.OPEN, AlertStatus.ACKNOWLEDGED]),
+        )
         .first()
     )
     if existing:
@@ -59,17 +60,24 @@ def create_or_dedupe_alert(
         action=AuditAction.ALERT_RAISED,
         case_id=case_id,
         evidence_id=evidence_id,
-        payload={"alert_id": alert.id, "rule": rule, "severity": severity.value, "explanation": explanation},
+        payload={
+            "alert_id": alert.id,
+            "rule": rule,
+            "severity": severity.value,
+            "explanation": explanation,
+        },
     )
     return alert
 
 
-def check_missing_acknowledgements(session: Session) -> List[Alert]:
+def check_missing_acknowledgements(session: Session) -> list[Alert]:
     """Flag transfers past SLA."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     pending_transfers = (
         session.query(CustodyTransfer)
-        .filter(CustodyTransfer.status == TransferStatus.PENDING_ACK, CustodyTransfer.ack_due_at < now)
+        .filter(
+            CustodyTransfer.status == TransferStatus.PENDING_ACK, CustodyTransfer.ack_due_at < now
+        )
         .all()
     )
 
@@ -107,9 +115,9 @@ def check_missing_acknowledgements(session: Session) -> List[Alert]:
     return alerts
 
 
-def check_burst_access(session: Session) -> List[Alert]:
+def check_burst_access(session: Session) -> list[Alert]:
     """Detect more than BURST_VIEW_THRESHOLD views/downloads within BURST_WINDOW_MINUTES."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_start = now - timedelta(minutes=settings.BURST_WINDOW_MINUTES)
 
     user_bursts = (
@@ -117,7 +125,7 @@ def check_burst_access(session: Session) -> List[Alert]:
         .filter(
             AuditLog.action.in_(["EVIDENCE_VIEWED", "EVIDENCE_DOWNLOADED"]),
             AuditLog.ts >= window_start,
-            AuditLog.actor_id != None,
+            AuditLog.actor_id is not None,
         )
         .group_by(AuditLog.actor_id)
         .having(func.count(AuditLog.seq) >= settings.BURST_VIEW_THRESHOLD)
@@ -157,9 +165,9 @@ def check_burst_access(session: Session) -> List[Alert]:
     return alerts
 
 
-def check_repeated_denied(session: Session) -> List[Alert]:
+def check_repeated_denied(session: Session) -> list[Alert]:
     """Detect DENIED_ATTEMPTS_THRESHOLD or more ACCESS_DENIED within DENIED_WINDOW_MINUTES."""
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     window_start = now - timedelta(minutes=settings.DENIED_WINDOW_MINUTES)
 
     denied_users = (
@@ -167,7 +175,7 @@ def check_repeated_denied(session: Session) -> List[Alert]:
         .filter(
             AuditLog.action == "ACCESS_DENIED",
             AuditLog.ts >= window_start,
-            AuditLog.actor_id != None,
+            AuditLog.actor_id is not None,
         )
         .group_by(AuditLog.actor_id)
         .having(func.count(AuditLog.seq) >= settings.DENIED_ATTEMPTS_THRESHOLD)
@@ -207,7 +215,9 @@ def check_repeated_denied(session: Session) -> List[Alert]:
     return alerts
 
 
-def check_off_hours_access(session: Session, actor_id: str, action_name: str, audit_seq: int, ts: datetime) -> Optional[Alert]:
+def check_off_hours_access(
+    session: Session, actor_id: str, action_name: str, audit_seq: int, ts: datetime
+) -> Alert | None:
     """Synchronous check for access outside business hours in configured timezone."""
     try:
         tz = zoneinfo.ZoneInfo(settings.BUSINESS_TZ)
@@ -222,7 +232,7 @@ def check_off_hours_access(session: Session, actor_id: str, action_name: str, au
     start_min = start_h * 60 + start_m
     end_min = end_h * 60 + end_m
 
-    is_off_hours = (current_min < start_min or current_min > end_min or local_ts.weekday() >= 5)
+    is_off_hours = current_min < start_min or current_min > end_min or local_ts.weekday() >= 5
     if is_off_hours:
         time_str = local_ts.strftime("%H:%M %Z")
         dedupe_key = f"OFF_HOURS:{actor_id}:{local_ts.strftime('%Y%m%d')}"
@@ -240,4 +250,3 @@ def check_off_hours_access(session: Session, actor_id: str, action_name: str, au
             dedupe_key=dedupe_key,
         )
     return None
-

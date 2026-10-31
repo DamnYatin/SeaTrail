@@ -2,7 +2,6 @@
 User management endpoints (ADMIN only).
 """
 
-from typing import List
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -17,11 +16,11 @@ from app.services.audit_chain import AuditAction, append
 router = APIRouter(prefix="/api/v1/users", tags=["Users"])
 
 
-@router.get("", response_model=List[UserResponse])
+@router.get("", response_model=list[UserResponse])
 def list_users(
     session: Session = Depends(get_db),
     admin: User = Depends(require_role(UserRole.ADMIN)),
-) -> List[UserResponse]:
+) -> list[UserResponse]:
     """List all user accounts in the system."""
     return session.query(User).order_by(User.created_at.desc()).all()
 
@@ -39,7 +38,11 @@ def create_user(
 
     existing = session.query(User).filter(User.email == email_clean).first()
     if existing:
-        raise AppError(code="EMAIL_EXISTS", message=f"User with email {email_clean} already exists", status_code=status.HTTP_409_CONFLICT)
+        raise AppError(
+            code="EMAIL_EXISTS",
+            message=f"User with email {email_clean} already exists",
+            status_code=status.HTTP_409_CONFLICT,
+        )
 
     if not validate_password_complexity(req.password):
         raise AppError(
@@ -81,7 +84,11 @@ def update_user(
     ip = request.client.host if request.client else None
     user = session.query(User).filter(User.id == user_id).first()
     if not user:
-        raise AppError(code="USER_NOT_FOUND", message=f"User {user_id} not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="USER_NOT_FOUND",
+            message=f"User {user_id} not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     changes = {}
     if req.full_name is not None:

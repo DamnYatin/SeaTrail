@@ -3,8 +3,8 @@ Collaboration routes: Annotations, People Directory, Case Events, Notes, and Evi
 """
 
 import hashlib
-from datetime import datetime, timezone
-from typing import List
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
@@ -32,20 +32,25 @@ router = APIRouter(tags=["Case Collaboration & Linking"])
 
 
 # ---- Annotations ----
-@router.get("/api/v1/evidence/{evidence_id}/annotations", response_model=List[AnnotationResponse])
+@router.get("/api/v1/evidence/{evidence_id}/annotations", response_model=list[AnnotationResponse])
 def get_annotations(
     evidence_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[AnnotationResponse]:
+) -> list[AnnotationResponse]:
     """List append-only annotations for an evidence item."""
     ev = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
     if not ev:
         raise AppError(code="EVIDENCE_NOT_FOUND", message="Evidence not found", status_code=404)
     get_case_with_access(ev.case_id, user, session, request=request)
 
-    notes = session.query(Annotation).filter(Annotation.evidence_id == evidence_id).order_by(Annotation.created_at.asc()).all()
+    notes = (
+        session.query(Annotation)
+        .filter(Annotation.evidence_id == evidence_id)
+        .order_by(Annotation.created_at.asc())
+        .all()
+    )
     results = []
     for a in notes:
         u = session.query(User).filter(User.id == a.author_id).first()
@@ -56,7 +61,11 @@ def get_annotations(
     return results
 
 
-@router.post("/api/v1/evidence/{evidence_id}/annotations", response_model=AnnotationResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/evidence/{evidence_id}/annotations",
+    response_model=AnnotationResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_annotation(
     evidence_id: str,
     req: AnnotationCreate,
@@ -100,19 +109,23 @@ def create_annotation(
 
 
 # ---- People ----
-@router.get("/api/v1/cases/{case_id}/people", response_model=List[PersonResponse])
+@router.get("/api/v1/cases/{case_id}/people", response_model=list[PersonResponse])
 def get_people(
     case_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[PersonResponse]:
+) -> list[PersonResponse]:
     """List persons linked to a case."""
     get_case_with_access(case_id, user, session, request=request)
     return session.query(Person).filter(Person.case_id == case_id).all()
 
 
-@router.post("/api/v1/cases/{case_id}/people", response_model=PersonResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/cases/{case_id}/people",
+    response_model=PersonResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_person(
     case_id: str,
     req: PersonCreate,
@@ -147,19 +160,28 @@ def add_person(
 
 
 # ---- Case Events ----
-@router.get("/api/v1/cases/{case_id}/events", response_model=List[CaseEventResponse])
+@router.get("/api/v1/cases/{case_id}/events", response_model=list[CaseEventResponse])
 def get_case_events(
     case_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[CaseEventResponse]:
+) -> list[CaseEventResponse]:
     """List timeline incident events for a case."""
     get_case_with_access(case_id, user, session, request=request)
-    return session.query(CaseEvent).filter(CaseEvent.case_id == case_id).order_by(CaseEvent.occurred_at.asc()).all()
+    return (
+        session.query(CaseEvent)
+        .filter(CaseEvent.case_id == case_id)
+        .order_by(CaseEvent.occurred_at.asc())
+        .all()
+    )
 
 
-@router.post("/api/v1/cases/{case_id}/events", response_model=CaseEventResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/cases/{case_id}/events",
+    response_model=CaseEventResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_case_event(
     case_id: str,
     req: CaseEventCreate,
@@ -193,16 +215,21 @@ def add_case_event(
 
 
 # ---- Case Notes ----
-@router.get("/api/v1/cases/{case_id}/notes", response_model=List[CaseNoteResponse])
+@router.get("/api/v1/cases/{case_id}/notes", response_model=list[CaseNoteResponse])
 def get_case_notes(
     case_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[CaseNoteResponse]:
+) -> list[CaseNoteResponse]:
     """List append-only investigation notes."""
     get_case_with_access(case_id, user, session, request=request)
-    notes = session.query(CaseNote).filter(CaseNote.case_id == case_id).order_by(CaseNote.created_at.asc()).all()
+    notes = (
+        session.query(CaseNote)
+        .filter(CaseNote.case_id == case_id)
+        .order_by(CaseNote.created_at.asc())
+        .all()
+    )
     results = []
     for n in notes:
         u = session.query(User).filter(User.id == n.author_id).first()
@@ -213,7 +240,11 @@ def get_case_notes(
     return results
 
 
-@router.post("/api/v1/cases/{case_id}/notes", response_model=CaseNoteResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/cases/{case_id}/notes",
+    response_model=CaseNoteResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def add_case_note(
     case_id: str,
     req: CaseNoteCreate,
@@ -250,13 +281,13 @@ def add_case_note(
 
 
 # ---- Evidence Links ----
-@router.get("/api/v1/evidence/{evidence_id}/links", response_model=List[EvidenceLinkResponse])
+@router.get("/api/v1/evidence/{evidence_id}/links", response_model=list[EvidenceLinkResponse])
 def get_evidence_links(
     evidence_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[EvidenceLinkResponse]:
+) -> list[EvidenceLinkResponse]:
     """List links connecting evidence to people, events, notes, or other evidence."""
     ev = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
     if not ev:
@@ -286,7 +317,11 @@ def get_evidence_links(
     return results
 
 
-@router.post("/api/v1/evidence/{evidence_id}/links", response_model=EvidenceLinkResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/api/v1/evidence/{evidence_id}/links",
+    response_model=EvidenceLinkResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_evidence_link(
     evidence_id: str,
     req: EvidenceLinkCreate,
@@ -330,7 +365,12 @@ def create_evidence_link(
         action=AuditAction.EVIDENCE_LINKED,
         case_id=ev.case_id,
         evidence_id=ev.id,
-        payload={"link_id": lnk.id, "target_type": lnk.target_type.value, "target_id": lnk.target_id, "relation": lnk.relation},
+        payload={
+            "link_id": lnk.id,
+            "target_type": lnk.target_type.value,
+            "target_id": lnk.target_id,
+            "relation": lnk.relation,
+        },
         ip=ip,
     )
     return EvidenceLinkResponse.model_validate(lnk)
@@ -350,11 +390,15 @@ def revoke_evidence_link(
         raise AppError(code="EVIDENCE_NOT_FOUND", message="Evidence not found", status_code=404)
     get_case_with_access(ev.case_id, user, session, request=request, allow_observer=False)
 
-    lnk = session.query(EvidenceLink).filter(EvidenceLink.id == link_id, EvidenceLink.evidence_id == evidence_id).first()
+    lnk = (
+        session.query(EvidenceLink)
+        .filter(EvidenceLink.id == link_id, EvidenceLink.evidence_id == evidence_id)
+        .first()
+    )
     if not lnk:
         raise AppError(code="LINK_NOT_FOUND", message="Link not found", status_code=404)
 
-    lnk.revoked_at = datetime.now(timezone.utc)
+    lnk.revoked_at = datetime.now(UTC)
     lnk.revoked_by = user.id
 
     ip = request.client.host if request.client else None

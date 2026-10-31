@@ -2,18 +2,13 @@
 Retention policies, legal holds, and approved evidence disposal router.
 """
 
-from typing import List, Optional
-from fastapi import APIRouter, Depends, Query, Request, status
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.deps import get_current_user, require_permission
-from app.errors import AppError
-from app.models.cases import Case
-from app.models.evidence import EvidenceItem
 from app.models.users import User
 from app.schemas.approvals import ApprovalResponse
-from app.schemas.cases import CaseResponse
 from app.schemas.retention import (
     DisposalRequest,
     LegalHoldReleaseRequest,
@@ -28,7 +23,7 @@ from app.services import retention
 router = APIRouter(prefix="/api/v1", tags=["Retention & Compliance"])
 
 
-@router.get("/retention/policies", response_model=List[RetentionPolicyResponse])
+@router.get("/retention/policies", response_model=list[RetentionPolicyResponse])
 def get_retention_policies(
     current_user: User = Depends(get_current_user),
     session: Session = Depends(get_db),
@@ -50,7 +45,7 @@ def create_retention_policy_endpoint(
     )
 
 
-@router.get("/retention/due", response_model=List[RetentionDueItemResponse])
+@router.get("/retention/due", response_model=list[RetentionDueItemResponse])
 def get_retention_due_items(
     days: int = Query(90, ge=1, le=365),
     current_user: User = Depends(require_permission(Permission.VIEW_CASE_METADATA)),
@@ -94,7 +89,11 @@ def place_case_legal_hold(
         reason=req_body.reason,
         ip=ip,
     )
-    return {"message": "Legal hold placed on case", "case_id": case.id, "legal_hold": case.legal_hold}
+    return {
+        "message": "Legal hold placed on case",
+        "case_id": case.id,
+        "legal_hold": case.legal_hold,
+    }
 
 
 @router.post("/legal-hold/release-request", response_model=ApprovalResponse)

@@ -2,13 +2,12 @@
 Alerts router: view and manage explainable security alerts.
 """
 
-from typing import List, Optional
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import desc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_permission
+from app.deps import require_permission
 from app.errors import AppError
 from app.models.alerts import Alert, AlertSeverity, AlertStatus
 from app.models.cases import Case
@@ -30,7 +29,11 @@ def _to_alert_response(session: Session, alert: Alert) -> AlertResponse:
 
     ev_num = None
     if alert.evidence_id:
-        e = session.query(EvidenceItem.evidence_number).filter(EvidenceItem.id == alert.evidence_id).first()
+        e = (
+            session.query(EvidenceItem.evidence_number)
+            .filter(EvidenceItem.id == alert.evidence_id)
+            .first()
+        )
         if e:
             ev_num = e[0]
 
@@ -54,11 +57,11 @@ def _to_alert_response(session: Session, alert: Alert) -> AlertResponse:
     )
 
 
-@router.get("", response_model=List[AlertResponse])
+@router.get("", response_model=list[AlertResponse])
 def list_alerts(
-    status_filter: Optional[AlertStatus] = Query(None, alias="status"),
-    severity: Optional[AlertSeverity] = Query(None),
-    case_id: Optional[str] = Query(None),
+    status_filter: AlertStatus | None = Query(None, alias="status"),
+    severity: AlertSeverity | None = Query(None),
+    case_id: str | None = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(25, ge=1, le=100),
     current_user: User = Depends(require_permission(Permission.READ_ALERTS)),
@@ -87,10 +90,16 @@ def acknowledge_alert(
 ):
     alert = session.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
-        raise AppError(code="NOT_FOUND", message="Alert not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="NOT_FOUND", message="Alert not found", status_code=status.HTTP_404_NOT_FOUND
+        )
 
     if alert.status == AlertStatus.RESOLVED:
-        raise AppError(code="INVALID_STATE", message="Resolved alert cannot be acknowledged", status_code=status.HTTP_409_CONFLICT)
+        raise AppError(
+            code="INVALID_STATE",
+            message="Resolved alert cannot be acknowledged",
+            status_code=status.HTTP_409_CONFLICT,
+        )
 
     alert.status = AlertStatus.ACKNOWLEDGED
     alert.acknowledged_by = current_user.id
@@ -124,11 +133,17 @@ def resolve_alert(
     session: Session = Depends(get_db),
 ):
     if not req_body.resolution_note or len(req_body.resolution_note.strip()) < 3:
-        raise AppError(code="INVALID_INPUT", message="Resolution note must be at least 3 characters", status_code=status.HTTP_422_UNPROCESSABLE_ENTITY)
+        raise AppError(
+            code="INVALID_INPUT",
+            message="Resolution note must be at least 3 characters",
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+        )
 
     alert = session.query(Alert).filter(Alert.id == alert_id).first()
     if not alert:
-        raise AppError(code="NOT_FOUND", message="Alert not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="NOT_FOUND", message="Alert not found", status_code=status.HTTP_404_NOT_FOUND
+        )
 
     old_status = alert.status.value
     alert.status = AlertStatus.RESOLVED

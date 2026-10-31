@@ -3,34 +3,14 @@ Test 8: RBAC permissions matrix, case isolation, separation of duties, and login
 """
 
 import pytest
-from datetime import datetime, timezone
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.main import create_app
 from app.models.audit import AuditLog
-from app.models.cases import Case, CaseMember, CaseMemberRole, CaseStatus
 from app.models.users import User, UserRole
 from app.security.passwords import hash_password
-from app.security.permissions import Permission, ROLE_PERMISSIONS, has_permission
+from app.security.permissions import Permission, has_permission
 from app.security.tokens import create_access_token
-
-
-@pytest.fixture
-def client(db_session: Session):
-    app = create_app()
-
-    def override_get_db():
-        try:
-            yield db_session
-        finally:
-            pass
-
-    app.dependency_overrides[get_db] = override_get_db
-    with TestClient(app) as test_client:
-        yield test_client
-    app.dependency_overrides.clear()
 
 
 @pytest.fixture

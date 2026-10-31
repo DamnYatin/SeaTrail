@@ -2,14 +2,14 @@
 Audit log, chain verification, and checkpoints router.
 """
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Query, Request, status
 from sqlalchemy import asc, desc
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_permission
+from app.deps import require_permission
 from app.errors import AppError
 from app.models.audit import AuditCheckpoint, AuditLog
 from app.models.cases import Case
@@ -47,7 +47,11 @@ def _to_entry_response(session: Session, entry: AuditLog) -> AuditEntryResponse:
 
     ev_num = None
     if entry.evidence_id:
-        e = session.query(EvidenceItem.evidence_number).filter(EvidenceItem.id == entry.evidence_id).first()
+        e = (
+            session.query(EvidenceItem.evidence_number)
+            .filter(EvidenceItem.id == entry.evidence_id)
+            .first()
+        )
         if e:
             ev_num = e[0]
 
@@ -71,14 +75,14 @@ def _to_entry_response(session: Session, entry: AuditLog) -> AuditEntryResponse:
 
 @router.get("", response_model=AuditListResponse)
 def list_audit_entries(
-    actor_id: Optional[str] = Query(None),
-    action: Optional[str] = Query(None),
-    case_id: Optional[str] = Query(None),
-    evidence_id: Optional[str] = Query(None),
-    from_seq: Optional[int] = Query(None),
-    to_seq: Optional[int] = Query(None),
-    from_ts: Optional[datetime] = Query(None),
-    to_ts: Optional[datetime] = Query(None),
+    actor_id: str | None = Query(None),
+    action: str | None = Query(None),
+    case_id: str | None = Query(None),
+    evidence_id: str | None = Query(None),
+    from_seq: int | None = Query(None),
+    to_seq: int | None = Query(None),
+    from_ts: datetime | None = Query(None),
+    to_ts: datetime | None = Query(None),
     order: str = Query("desc", pattern="^(asc|desc)$"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
@@ -140,7 +144,7 @@ def verify_audit_chain(
         state = IntegrityState(id=1)
         session.add(state)
 
-    state.last_chain_check_at = datetime.now(timezone.utc)
+    state.last_chain_check_at = datetime.now(UTC)
     state.chain_ok = result.ok
     state.head_seq = result.head_seq
     state.broken_seq = result.first_broken_seq
@@ -174,18 +178,13 @@ def verify_audit_chain(
     )
 
 
-@router.get("/checkpoints", response_model=List[CheckpointResponse])
+@router.get("/checkpoints", response_model=list[CheckpointResponse])
 def list_checkpoints(
     limit: int = Query(20, ge=1, le=100),
     current_user: User = Depends(require_permission(Permission.READ_AUDIT_LOG)),
     session: Session = Depends(get_db),
 ):
-    cps = (
-        session.query(AuditCheckpoint)
-        .order_by(desc(AuditCheckpoint.seq_to))
-        .limit(limit)
-        .all()
-    )
+    cps = session.query(AuditCheckpoint).order_by(desc(AuditCheckpoint.seq_to)).limit(limit).all()
     return cps
 
 
@@ -197,7 +196,11 @@ def create_checkpoint_endpoint(
 ):
     cp = checkpoints.create_checkpoint(session, created_by=current_user.id)
     if not cp:
-        raise AppError(code="EMPTY_CHAIN", message="Audit chain is empty; cannot create checkpoint", status_code=status.HTTP_400_BAD_REQUEST)
+        raise AppError(
+            code="EMPTY_CHAIN",
+            message="Audit chain is empty; cannot create checkpoint",
+            status_code=status.HTTP_400_BAD_REQUEST,
+        )
 
     ip = request.client.host if request.client else None
     append(

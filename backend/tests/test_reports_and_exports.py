@@ -3,7 +3,6 @@ Tests 10 and 11: Cryptographically signed custody reports, report verification,
 statutory Section 63 BSA certificate, and export package with standalone offline verify.py.
 """
 
-from datetime import datetime, timezone
 import copy
 import hashlib
 import io
@@ -12,6 +11,8 @@ import sys
 import tempfile
 import uuid
 import zipfile
+from datetime import UTC, datetime
+
 import pytest
 import pyzipper
 from fastapi.testclient import TestClient
@@ -19,13 +20,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.main import create_app
-from app.models.approvals import ApprovalRequest, ApprovalStatus
 from app.models.cases import Case, CaseClassification, CaseMember, CaseMemberRole, CaseStatus
 from app.models.evidence import EvidenceItem, EvidenceType, IntegrityStateEnum
 from app.models.users import User, UserRole
 from app.security.passwords import hash_password
 from app.security.tokens import create_access_token
-from app.services import audit_chain, bsa_certificate, custody_report, export_package, storage
+from app.services import audit_chain, bsa_certificate, storage
 
 
 @pytest.fixture
@@ -77,11 +77,19 @@ def reports_setup(db_session: Session):
     db_session.add(case)
     db_session.flush()
 
-    db_session.add_all([
-        CaseMember(case_id=case.id, user_id=sup1.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id),
-        CaseMember(case_id=case.id, user_id=sup2.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id),
-        CaseMember(case_id=case.id, user_id=inv.id, case_role=CaseMemberRole.LEAD, added_by=sup1.id),
-    ])
+    db_session.add_all(
+        [
+            CaseMember(
+                case_id=case.id, user_id=sup1.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id
+            ),
+            CaseMember(
+                case_id=case.id, user_id=sup2.id, case_role=CaseMemberRole.MEMBER, added_by=sup1.id
+            ),
+            CaseMember(
+                case_id=case.id, user_id=inv.id, case_role=CaseMemberRole.LEAD, added_by=sup1.id
+            ),
+        ]
+    )
     db_session.flush()
 
     content = b"Evidence test payload for reports and exports"
@@ -96,7 +104,7 @@ def reports_setup(db_session: Session):
         item_name="ReportEvidenceFile",
         description="Test evidence for custody reports",
         collected_by_user_id=inv.id,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         original_filename="payload.bin",
         content_type="application/octet-stream",
         size_bytes=len(content),
@@ -135,7 +143,10 @@ def test_10_custody_report_and_verification(client: TestClient, db_session: Sess
     token = create_access_token(sup1.id, sup1.email, sup1.role.value)
 
     # 1. GET JSON report
-    resp = client.get(f"/api/v1/evidence/{item.id}/custody-report?format=json", headers={"Authorization": f"Bearer {token}"})
+    resp = client.get(
+        f"/api/v1/evidence/{item.id}/custody-report?format=json",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp.status_code == 200
     report_json = resp.json()
 
@@ -163,18 +174,25 @@ def test_10_custody_report_and_verification(client: TestClient, db_session: Sess
     assert verify_tampered.json()["valid"] is False
 
     # 4. GET PDF report
-    resp_pdf = client.get(f"/api/v1/evidence/{item.id}/custody-report?format=pdf", headers={"Authorization": f"Bearer {token}"})
+    resp_pdf = client.get(
+        f"/api/v1/evidence/{item.id}/custody-report?format=pdf",
+        headers={"Authorization": f"Bearer {token}"},
+    )
     assert resp_pdf.status_code == 200
     assert resp_pdf.headers["content-type"] == "application/pdf"
     assert resp_pdf.content.startswith(b"%PDF")
 
     # 5. Section 63 BSA Certificate PDF
-    bsa_pdf = bsa_certificate.generate_bsa_certificate_pdf(session=db_session, evidence=item, actor=sup1)
+    bsa_pdf = bsa_certificate.generate_bsa_certificate_pdf(
+        session=db_session, evidence=item, actor=sup1
+    )
     assert bsa_pdf.startswith(b"%PDF")
     assert len(bsa_pdf) > 1000
 
 
-def test_11_export_package_and_offline_verifier(client: TestClient, db_session: Session, reports_setup):
+def test_11_export_package_and_offline_verifier(
+    client: TestClient, db_session: Session, reports_setup
+):
     """
     Test 11: Export package build, embedded verify.py execution via subprocess -> exit 0,
     tampered file inside -> verify.py exits non-zero, and encrypted ZIP protection.
@@ -217,7 +235,9 @@ def test_11_export_package_and_offline_verifier(client: TestClient, db_session: 
     export_id = export_info["id"]
 
     # 4. Download export package
-    dl_resp = client.get(f"/api/v1/exports/{export_id}/download", headers={"Authorization": f"Bearer {sup1_token}"})
+    dl_resp = client.get(
+        f"/api/v1/exports/{export_id}/download", headers={"Authorization": f"Bearer {sup1_token}"}
+    )
     assert dl_resp.status_code == 200
     zip_bytes = dl_resp.content
 
@@ -237,7 +257,9 @@ def test_11_export_package_and_offline_verifier(client: TestClient, db_session: 
             text=True,
             cwd=tmpdir,
         )
-        assert result.returncode == 0, f"Verifier failed with output: {result.stdout}\n{result.stderr}"
+        assert (
+            result.returncode == 0
+        ), f"Verifier failed with output: {result.stdout}\n{result.stderr}"
         assert "ALL VERIFICATIONS PASSED" in result.stdout
 
         # 6. Tamper with a file inside package and confirm verify.py fails
@@ -278,7 +300,10 @@ def test_11_export_package_and_offline_verifier(client: TestClient, db_session: 
     )
     assert build2_resp.status_code == 200
 
-    enc_dl_resp = client.get(f"/api/v1/exports/{build2_resp.json()['id']}/download", headers={"Authorization": f"Bearer {sup1_token}"})
+    enc_dl_resp = client.get(
+        f"/api/v1/exports/{build2_resp.json()['id']}/download",
+        headers={"Authorization": f"Bearer {sup1_token}"},
+    )
     assert enc_dl_resp.status_code == 200
 
     # Confirm pyzipper opens it only with passphrase

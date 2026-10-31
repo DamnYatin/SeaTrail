@@ -6,19 +6,17 @@ import base64
 import hashlib
 import io
 import json
-from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime
+from typing import Any
 
 import qrcode
 from cryptography.exceptions import InvalidSignature
-from cryptography.hazmat.primitives.asymmetric import ed25519
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     HRFlowable,
     Image,
-    KeepTogether,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -28,8 +26,7 @@ from reportlab.platypus import (
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
-from app.logging import logger
-from app.models.audit import AuditCheckpoint, AuditLog
+from app.models.audit import AuditLog
 from app.models.cases import Case
 from app.models.custody import CustodyTransfer
 from app.models.evidence import EvidenceItem
@@ -41,15 +38,17 @@ from app.services.audit_chain import AuditAction, append
 
 
 def _canonicalize_json(data: Any) -> bytes:
-    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def generate_custody_report_data(
     session: Session,
     evidence_id: str,
-    actor: Optional[User] = None,
-    ip: Optional[str] = None,
-) -> Dict[str, Any]:
+    actor: User | None = None,
+    ip: str | None = None,
+) -> dict[str, Any]:
     """
     Generate cryptographically signed custody report JSON for an evidence item.
     """
@@ -58,8 +57,16 @@ def generate_custody_report_data(
         raise ValueError("Evidence item not found")
 
     case = session.query(Case).filter(Case.id == evidence.case_id).first()
-    collector = session.query(User).filter(User.id == evidence.collected_by_user_id).first() if evidence.collected_by_user_id else None
-    custodian = session.query(User).filter(User.id == evidence.current_custodian_id).first() if evidence.current_custodian_id else None
+    collector = (
+        session.query(User).filter(User.id == evidence.collected_by_user_id).first()
+        if evidence.collected_by_user_id
+        else None
+    )
+    custodian = (
+        session.query(User).filter(User.id == evidence.current_custodian_id).first()
+        if evidence.current_custodian_id
+        else None
+    )
 
     # Audit trail for this item
     entries = (
@@ -88,7 +95,7 @@ def generate_custody_report_data(
     # Links
     links = (
         session.query(EvidenceLink)
-        .filter(EvidenceLink.evidence_id == evidence.id, EvidenceLink.revoked_at == None)
+        .filter(EvidenceLink.evidence_id == evidence.id, EvidenceLink.revoked_at is None)
         .all()
     )
 
@@ -109,7 +116,7 @@ def generate_custody_report_data(
 
     report_payload = {
         "schema_version": "1.0",
-        "generated_at": datetime.now(timezone.utc).isoformat(),
+        "generated_at": datetime.now(UTC).isoformat(),
         "evidence": {
             "id": evidence.id,
             "evidence_number": evidence.evidence_number,
@@ -124,7 +131,9 @@ def generate_custody_report_data(
             "collected_at": evidence.collected_at.isoformat() if evidence.collected_at else None,
             "current_custodian": custodian.full_name if custodian else None,
             "current_location": evidence.current_location,
-            "status": evidence.status.value if hasattr(evidence.status, "value") else str(evidence.status),
+            "status": evidence.status.value
+            if hasattr(evidence.status, "value")
+            else str(evidence.status),
             "legal_hold": evidence.legal_hold,
         },
         "transfers": [
@@ -151,12 +160,14 @@ def generate_custody_report_data(
         ],
         "links": [
             {
-                "id": l.id,
-                "target_type": l.target_type.value if hasattr(l.target_type, "value") else str(l.target_type),
-                "target_id": l.target_id,
-                "relation": l.relation,
+                "id": link.id,
+                "target_type": link.target_type.value
+                if hasattr(link.target_type, "value")
+                else str(link.target_type),
+                "target_id": link.target_id,
+                "relation": link.relation,
             }
-            for l in links
+            for link in links
         ],
         "audit_trail": [
             {
@@ -225,7 +236,7 @@ def generate_custody_report_data(
     return full_report
 
 
-def generate_custody_report_pdf(report_dict: Dict[str, Any]) -> bytes:
+def generate_custody_report_pdf(report_dict: dict[str, Any]) -> bytes:
     """
     Render PDF custody report with ReportLab.
     """
@@ -312,38 +323,64 @@ def generate_custody_report_pdf(report_dict: Dict[str, Any]) -> bytes:
         colWidths=[450, 90],
     )
     header_table.setStyle(
-        TableStyle([
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("SPAN", (0, 1), (0, 1)),
-            ("ALIGN", (1, 0), (1, 0), "RIGHT"),
-        ])
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("SPAN", (0, 1), (0, 1)),
+                ("ALIGN", (1, 0), (1, 0), "RIGHT"),
+            ]
+        )
     )
     story.append(header_table)
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10))
+    story.append(
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#cbd5e1"), spaceAfter=10)
+    )
 
     # Evidence Summary
     story.append(Paragraph("1. EVIDENCE RECORD SUMMARY", section_title))
     summary_data = [
-        [Paragraph("<b>Item Name:</b>", body_style), Paragraph(str(ev.get("item_name")), body_style),
-         Paragraph("<b>Type:</b>", body_style), Paragraph(str(ev.get("type")), body_style)],
-        [Paragraph("<b>SHA-256:</b>", body_style), Paragraph(f"<font name='Courier' size=7>{ev.get('sha256')}</font>", body_style),
-         Paragraph("<b>Size:</b>", body_style), Paragraph(f"{ev.get('size_bytes', 0):,} bytes", body_style)],
-        [Paragraph("<b>Collector:</b>", body_style), Paragraph(str(ev.get("collected_by")), body_style),
-         Paragraph("<b>Collected At:</b>", body_style), Paragraph(str(ev.get("collected_at")), body_style)],
-        [Paragraph("<b>Current Custodian:</b>", body_style), Paragraph(str(ev.get("current_custodian")), body_style),
-         Paragraph("<b>Location:</b>", body_style), Paragraph(str(ev.get("current_location")), body_style)],
-        [Paragraph("<b>Status:</b>", body_style), Paragraph(str(ev.get("status")), body_style),
-         Paragraph("<b>Legal Hold:</b>", body_style), Paragraph("YES" if ev.get("legal_hold") else "NO", body_style)],
+        [
+            Paragraph("<b>Item Name:</b>", body_style),
+            Paragraph(str(ev.get("item_name")), body_style),
+            Paragraph("<b>Type:</b>", body_style),
+            Paragraph(str(ev.get("type")), body_style),
+        ],
+        [
+            Paragraph("<b>SHA-256:</b>", body_style),
+            Paragraph(f"<font name='Courier' size=7>{ev.get('sha256')}</font>", body_style),
+            Paragraph("<b>Size:</b>", body_style),
+            Paragraph(f"{ev.get('size_bytes', 0):,} bytes", body_style),
+        ],
+        [
+            Paragraph("<b>Collector:</b>", body_style),
+            Paragraph(str(ev.get("collected_by")), body_style),
+            Paragraph("<b>Collected At:</b>", body_style),
+            Paragraph(str(ev.get("collected_at")), body_style),
+        ],
+        [
+            Paragraph("<b>Current Custodian:</b>", body_style),
+            Paragraph(str(ev.get("current_custodian")), body_style),
+            Paragraph("<b>Location:</b>", body_style),
+            Paragraph(str(ev.get("current_location")), body_style),
+        ],
+        [
+            Paragraph("<b>Status:</b>", body_style),
+            Paragraph(str(ev.get("status")), body_style),
+            Paragraph("<b>Legal Hold:</b>", body_style),
+            Paragraph("YES" if ev.get("legal_hold") else "NO", body_style),
+        ],
     ]
     st = Table(summary_data, colWidths=[100, 200, 90, 150])
     st.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#e2e8f0")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
     )
     story.append(st)
     story.append(Spacer(1, 10))
@@ -354,32 +391,49 @@ def generate_custody_report_pdf(report_dict: Dict[str, Any]) -> bytes:
     integ_data = [
         [
             Paragraph("<b>Three-Way Binding:</b>", body_style),
-            Paragraph("<font color='green'><b>PASS (OK)</b></font>" if integrity_block.get("three_way_verified") else "<font color='red'><b>FAIL</b></font>", body_style),
+            Paragraph(
+                "<font color='green'><b>PASS (OK)</b></font>"
+                if integrity_block.get("three_way_verified")
+                else "<font color='red'><b>FAIL</b></font>",
+                body_style,
+            ),
             Paragraph("<b>Audit Chain Status:</b>", body_style),
-            Paragraph("<font color='green'><b>PASS (VALID)</b></font>" if integrity_block.get("chain_verified") else "<font color='red'><b>BROKEN</b></font>", body_style),
+            Paragraph(
+                "<font color='green'><b>PASS (VALID)</b></font>"
+                if integrity_block.get("chain_verified")
+                else "<font color='red'><b>BROKEN</b></font>",
+                body_style,
+            ),
         ],
         [
             Paragraph("<b>Chain Head Seq:</b>", body_style),
             Paragraph(str(integrity_block.get("chain_head_seq")), body_style),
             Paragraph("<b>Nearest Checkpoint:</b>", body_style),
-            Paragraph(f"Seq #{cp_info.get('seq_to', 'N/A')} (Key ID: {cp_info.get('public_key_id', 'N/A')})", body_style),
+            Paragraph(
+                f"Seq #{cp_info.get('seq_to', 'N/A')} (Key ID: {cp_info.get('public_key_id', 'N/A')})",
+                body_style,
+            ),
         ],
         [
             Paragraph("<b>Report SHA-256:</b>", body_style),
             Paragraph(f"<font name='Courier' size=7>{report_sha}</font>", body_style),
             Paragraph("<b>Ed25519 Signature:</b>", body_style),
-            Paragraph(f"<font name='Courier' size=7>{sig_b64[:24]}...{sig_b64[-12:]}</font>", body_style),
+            Paragraph(
+                f"<font name='Courier' size=7>{sig_b64[:24]}...{sig_b64[-12:]}</font>", body_style
+            ),
         ],
     ]
     it = Table(integ_data, colWidths=[110, 180, 110, 140])
     it.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-            ("TOPPADDING", (0, 0), (-1, -1), 4),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f1f5f9")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("TOPPADDING", (0, 0), (-1, -1), 4),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+            ]
+        )
     )
     story.append(it)
     story.append(Spacer(1, 10))
@@ -397,24 +451,28 @@ def generate_custody_report_pdf(report_dict: Dict[str, Any]) -> bytes:
         ]
     ]
     for row in audit_entries:
-        table_rows.append([
-            Paragraph(str(row.get("seq")), mono_style),
-            Paragraph(str(row.get("ts"))[:19].replace("T", " "), mono_style),
-            Paragraph(str(row.get("action")), mono_style),
-            Paragraph(f"{row.get('actor_role') or ''}", mono_style),
-            Paragraph(f"{row.get('entry_hash', '')[:16]}...", mono_style),
-        ])
+        table_rows.append(
+            [
+                Paragraph(str(row.get("seq")), mono_style),
+                Paragraph(str(row.get("ts"))[:19].replace("T", " "), mono_style),
+                Paragraph(str(row.get("action")), mono_style),
+                Paragraph(f"{row.get('actor_role') or ''}", mono_style),
+                Paragraph(f"{row.get('entry_hash', '')[:16]}...", mono_style),
+            ]
+        )
 
     at = Table(table_rows, colWidths=[35, 110, 155, 90, 150])
     at.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#e2e8f0")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
     )
     story.append(at)
     story.append(Spacer(1, 15))
@@ -431,11 +489,11 @@ def generate_custody_report_pdf(report_dict: Dict[str, Any]) -> bytes:
     return buf.getvalue()
 
 
-def verify_custody_report(session: Session, report_dict: Dict[str, Any]) -> ReportVerifyResponse:
+def verify_custody_report(session: Session, report_dict: dict[str, Any]) -> ReportVerifyResponse:
     """
     Verify report signature, report hash, and audit trail consistency against the live chain.
     """
-    details: Dict[str, Any] = {}
+    details: dict[str, Any] = {}
 
     report_data = report_dict.get("report_data")
     report_sha256 = report_dict.get("report_sha256")
@@ -453,7 +511,7 @@ def verify_custody_report(session: Session, report_dict: Dict[str, Any]) -> Repo
     # 1. Verify Report Hash
     canonical_bytes = _canonicalize_json(report_data)
     computed_hash = hashlib.sha256(canonical_bytes).hexdigest()
-    report_hash_valid = (computed_hash == report_sha256)
+    report_hash_valid = computed_hash == report_sha256
     details["report_hash_match"] = report_hash_valid
 
     # 2. Verify Ed25519 signature
@@ -489,12 +547,14 @@ def verify_custody_report(session: Session, report_dict: Dict[str, Any]) -> Repo
             or live_entry.action != entry.get("action")
         ):
             audit_entries_match = False
-            mismatched_seqs.append({
-                "seq": seq,
-                "reason": "HASH_OR_ACTION_MISMATCH",
-                "live_entry_hash": live_entry.entry_hash,
-                "report_entry_hash": entry.get("entry_hash"),
-            })
+            mismatched_seqs.append(
+                {
+                    "seq": seq,
+                    "reason": "HASH_OR_ACTION_MISMATCH",
+                    "live_entry_hash": live_entry.entry_hash,
+                    "report_entry_hash": entry.get("entry_hash"),
+                }
+            )
 
     if mismatched_seqs:
         details["mismatched_entries"] = mismatched_seqs

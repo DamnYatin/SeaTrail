@@ -4,7 +4,8 @@ Custody transfer tracking model.
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import Boolean, Column, DateTime, Enum, ForeignKey, String, Text
 from sqlalchemy.orm import relationship
 
@@ -25,7 +26,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class CustodyTransfer(Base):

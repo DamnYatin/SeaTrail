@@ -4,11 +4,11 @@ Binds storage object (pinned & live) ↔ database row ↔ audit chain registrati
 """
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from datetime import UTC, datetime
+from typing import Any
+
 from sqlalchemy.orm import Session
 
-from app.logging import logger
 from app.models.alerts import Alert, AlertSeverity, AlertStatus
 from app.models.audit import AuditLog
 from app.models.evidence import EvidenceItem, IntegrityStateEnum
@@ -21,11 +21,11 @@ from app.services.audit_chain import AuditAction, append
 class EvidenceVerificationResult:
     status: IntegrityStateEnum
     match: bool
-    pinned_object_hash: Optional[str]
-    live_object_hash: Optional[str]
+    pinned_object_hash: str | None
+    live_object_hash: str | None
     object_replaced: bool
     audit_hash_match: bool
-    details: Dict[str, Any]
+    details: dict[str, Any]
 
 
 def raise_integrity_alert(
@@ -34,7 +34,7 @@ def raise_integrity_alert(
     rule: str,
     severity: AlertSeverity,
     explanation: str,
-    details: Dict[str, Any],
+    details: dict[str, Any],
     audit_seq: int,
 ):
     """Raise or update deduplicated security alert."""
@@ -66,9 +66,9 @@ def raise_integrity_alert(
 def verify_evidence(
     session: Session,
     evidence: EvidenceItem,
-    actor: Optional[Any] = None,
+    actor: Any | None = None,
     trigger: str = "MANUAL",
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> EvidenceVerificationResult:
     """
     Perform three-way integrity verification:
@@ -76,7 +76,7 @@ def verify_evidence(
     B. Live object version from S3 vs evidence.storage_version_id.
     C. Audit log binding (EVIDENCE_REGISTERED audit entry sha256) vs evidence.sha256.
     """
-    details: Dict[str, Any] = {"trigger": trigger}
+    details: dict[str, Any] = {"trigger": trigger}
 
     # A. Pinned object verification
     pinned_hash = None
@@ -87,7 +87,7 @@ def verify_evidence(
             version_id=evidence.storage_version_id,
         )
         pinned_hash = hashing.hash_stream(pinned_stream)
-        pinned_ok = (pinned_hash == evidence.sha256)
+        pinned_ok = pinned_hash == evidence.sha256
     except Exception as e:
         pinned_ok = False
         details["pinned_error"] = str(e)
@@ -97,7 +97,11 @@ def verify_evidence(
     live_hash = None
     try:
         live_version = storage.latest_version_id(evidence.storage_bucket, evidence.storage_key)
-        if live_version and evidence.storage_version_id and live_version != evidence.storage_version_id:
+        if (
+            live_version
+            and evidence.storage_version_id
+            and live_version != evidence.storage_version_id
+        ):
             object_replaced = True
             details["live_version_id"] = live_version
             details["stored_version_id"] = evidence.storage_version_id
@@ -120,7 +124,7 @@ def verify_evidence(
     )
     if reg_entry:
         audit_sha256 = reg_entry.payload.get("sha256")
-        audit_match = (audit_sha256 == evidence.sha256)
+        audit_match = audit_sha256 == evidence.sha256
         details["audit_seq"] = reg_entry.seq
     else:
         # Fallback if uncommitted in test session or missing
@@ -135,10 +139,12 @@ def verify_evidence(
         verdict = IntegrityStateEnum.OK
 
     evidence.integrity_state = verdict
-    evidence.last_verified_at = datetime.now(timezone.utc)
+    evidence.last_verified_at = datetime.now(UTC)
 
     # Append verification audit entry
-    action = AuditAction.HASH_VERIFIED if verdict == IntegrityStateEnum.OK else AuditAction.HASH_MISMATCH
+    action = (
+        AuditAction.HASH_VERIFIED if verdict == IntegrityStateEnum.OK else AuditAction.HASH_MISMATCH
+    )
     audit_entry = append(
         session=session,
         actor=actor,
@@ -192,13 +198,13 @@ def verify_evidence(
 def run_evidence_sweep(
     session: Session,
     started_by: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> IntegrityRun:
     """
     Run an integrity verification sweep across all active evidence items.
     Updates the IntegrityRun record and audits verification.
     """
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     sweep = IntegrityRun(
         kind=IntegrityRunKind.EVIDENCE_SWEEP,
         started_by=started_by,
@@ -208,11 +214,7 @@ def run_evidence_sweep(
     session.add(sweep)
     session.flush()
 
-    active_items = (
-        session.query(EvidenceItem)
-        .filter(EvidenceItem.status != "DISPOSED")
-        .all()
-    )
+    active_items = session.query(EvidenceItem).filter(EvidenceItem.status != "DISPOSED").all()
 
     sweep.total = len(active_items)
     failed_count = 0
@@ -232,9 +234,8 @@ def run_evidence_sweep(
 
     sweep.checked = checked_count
     sweep.failed = failed_count
-    sweep.finished_at = datetime.now(timezone.utc)
+    sweep.finished_at = datetime.now(UTC)
     sweep.status = IntegrityRunStatus.COMPLETED
 
     session.flush()
     return sweep
-

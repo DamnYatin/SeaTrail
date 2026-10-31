@@ -14,7 +14,9 @@ from pathlib import Path
 
 
 def canonicalize(data):
-    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    return json.dumps(data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode(
+        "utf-8"
+    )
 
 
 def hash_file(path):
@@ -27,7 +29,7 @@ def hash_file(path):
 
 def main():
     package_dir = Path(__file__).resolve().parent
-    print(f"=== SEALTRAIL EXPORT VERIFICATION ===")
+    print("=== SEALTRAIL EXPORT VERIFICATION ===")
     print(f"Package root: {package_dir}\n")
 
     failures = []
@@ -40,7 +42,7 @@ def main():
         sys.exit(1)
 
     print("[*] Verifying file checksums from SHA256SUMS.txt...")
-    with open(sums_file, "r", encoding="utf-8") as f:
+    with open(sums_file, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if not line or line.startswith("#"):
@@ -63,7 +65,9 @@ def main():
                 passes.append(f"Checksum: {rel_path}")
                 print(f"  [PASS] {rel_path}")
             else:
-                failures.append(f"Checksum mismatch: {rel_path} (expected {expected_hash}, got {actual_hash})")
+                failures.append(
+                    f"Checksum mismatch: {rel_path} (expected {expected_hash}, got {actual_hash})"
+                )
                 print(f"  [FAIL] {rel_path}: HASH MISMATCH")
 
     # 2. Verify Manifest and Audit Chain Linkage
@@ -74,7 +78,7 @@ def main():
     else:
         print("\n[*] Verifying audit log chain linkage in manifest.json...")
         try:
-            with open(manifest_file, "r", encoding="utf-8") as f:
+            with open(manifest_file, encoding="utf-8") as f:
                 manifest_data = json.load(f)
 
             audit_entries = manifest_data.get("audit_trail", [])
@@ -101,7 +105,9 @@ def main():
 
                 if computed_hash != entry_hash:
                     chain_ok = False
-                    failures.append(f"Audit chain broken at seq #{seq}: computed {computed_hash} != stored {entry_hash}")
+                    failures.append(
+                        f"Audit chain broken at seq #{seq}: computed {computed_hash} != stored {entry_hash}"
+                    )
                     print(f"  [FAIL] Audit seq #{seq}: ENTRY HASH MISMATCH")
                     break
 
@@ -109,7 +115,9 @@ def main():
                     prev_entry = audit_entries[i - 1]
                     if entry["prev_hash"] != prev_entry["entry_hash"]:
                         chain_ok = False
-                        failures.append(f"Audit chain broken linkage between #{prev_entry['seq']} and #{seq}")
+                        failures.append(
+                            f"Audit chain broken linkage between #{prev_entry['seq']} and #{seq}"
+                        )
                         print(f"  [FAIL] Audit seq #{seq}: PREV HASH LINKAGE BROKEN")
                         break
 
@@ -129,7 +137,6 @@ def main():
         print("\n[*] Verifying cryptographic Ed25519 digital signature...")
         try:
             from cryptography.hazmat.primitives import serialization
-            from cryptography.hazmat.primitives.asymmetric import ed25519
 
             with open(manifest_file, "rb") as f:
                 raw_manifest = json.load(f)

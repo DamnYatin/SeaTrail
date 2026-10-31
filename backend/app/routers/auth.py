@@ -2,8 +2,8 @@
 Authentication routes: login, token refresh, logout, and current user profile.
 """
 
-from datetime import datetime, timedelta, timezone
-from typing import Optional
+from datetime import UTC, datetime, timedelta
+
 from fastapi import APIRouter, Cookie, Depends, Request, Response, status
 from sqlalchemy.orm import Session
 
@@ -11,7 +11,6 @@ from app.config import settings
 from app.db import get_db
 from app.deps import get_current_user
 from app.errors import AppError
-from app.logging import logger
 from app.models.users import User
 from app.schemas.auth import LoginRequest, LoginResponse, RefreshResponse, UserProfileResponse
 from app.security.passwords import verify_password
@@ -34,7 +33,7 @@ def login(
     """
     email_clean = req.email.strip().lower()
     ip = request.client.host if request.client else None
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
 
     user = session.query(User).filter(User.email == email_clean).first()
 
@@ -78,7 +77,10 @@ def login(
             append_independent(
                 actor=user,
                 action=AuditAction.ACCOUNT_LOCKED,
-                payload={"failures": user.failed_login_count, "lockout_minutes": settings.LOGIN_LOCKOUT_MINUTES},
+                payload={
+                    "failures": user.failed_login_count,
+                    "lockout_minutes": settings.LOGIN_LOCKOUT_MINUTES,
+                },
                 ip=ip,
             )
             raise AppError(
@@ -137,19 +139,27 @@ def login(
 def refresh(
     request: Request,
     response: Response,
-    sealtrail_refresh: Optional[str] = Cookie(None),
+    sealtrail_refresh: str | None = Cookie(None),
     session: Session = Depends(get_db),
 ) -> RefreshResponse:
     """Silent refresh of access token using httpOnly cookie."""
     if not sealtrail_refresh:
-        raise AppError(code="UNAUTHORIZED", message="Refresh token missing", status_code=status.HTTP_401_UNAUTHORIZED)
+        raise AppError(
+            code="UNAUTHORIZED",
+            message="Refresh token missing",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
     payload = decode_token(sealtrail_refresh, expected_type="refresh")
     user_id = payload.get("sub")
 
-    user = session.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = session.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     if not user:
-        raise AppError(code="USER_NOT_FOUND", message="User inactive or deleted", status_code=status.HTTP_401_UNAUTHORIZED)
+        raise AppError(
+            code="USER_NOT_FOUND",
+            message="User inactive or deleted",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
     new_access = create_access_token(user.id, user.email, user.role.value)
     new_refresh = create_refresh_token(user.id)

@@ -5,14 +5,13 @@ storage upload with immediate read-back verification, and atomic audit logging.
 """
 
 import io
-from datetime import datetime, timedelta, timezone
-from typing import BinaryIO, Dict, Optional, Tuple
-from sqlalchemy import text
+from datetime import UTC, datetime, timedelta
+from typing import BinaryIO
+
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.errors import AppError
-from app.logging import logger
 from app.models.cases import Case, CaseStatus, RetentionPolicy
 from app.models.evidence import EvidenceItem, EvidenceStatus, EvidenceType, IntegrityStateEnum
 from app.models.users import User
@@ -28,15 +27,17 @@ def register_evidence(
     file_stream: BinaryIO,
     original_filename: str,
     content_type: str,
-    metadata: Dict,
-    client_sha256: Optional[str] = None,
-    ip: Optional[str] = None,
-) -> Tuple[EvidenceItem, Dict]:
+    metadata: dict,
+    client_sha256: str | None = None,
+    ip: str | None = None,
+) -> tuple[EvidenceItem, dict]:
     """
     Execute full evidence intake pipeline.
     """
     if case.status != CaseStatus.OPEN:
-        raise AppError(code="CASE_CLOSED", message="Cannot intake evidence into a closed case", status_code=400)
+        raise AppError(
+            code="CASE_CLOSED", message="Cannot intake evidence into a closed case", status_code=400
+        )
 
     # 1. Read file stream in 1 MiB chunks, compute SHA-256 and size
     hasher = hashing.hashlib.sha256()
@@ -113,10 +114,18 @@ def register_evidence(
             actor=user,
             action=AuditAction.INTAKE_REJECTED,
             case_id=case.id,
-            payload={"reason": "STORAGE_READBACK_FAILED", "error": str(e), "storage_key": storage_key},
+            payload={
+                "reason": "STORAGE_READBACK_FAILED",
+                "error": str(e),
+                "storage_key": storage_key,
+            },
             ip=ip,
         )
-        raise AppError(code="STORAGE_VERIFICATION_FAILED", message="Failed to read back evidence from storage", status_code=502)
+        raise AppError(
+            code="STORAGE_VERIFICATION_FAILED",
+            message="Failed to read back evidence from storage",
+            status_code=502,
+        )
 
     if readback_sha256 != server_sha256:
         append_independent(
@@ -131,16 +140,24 @@ def register_evidence(
             },
             ip=ip,
         )
-        raise AppError(code="STORAGE_VERIFICATION_FAILED", message="Read-back hash verification failed", status_code=502)
+        raise AppError(
+            code="STORAGE_VERIFICATION_FAILED",
+            message="Read-back hash verification failed",
+            status_code=502,
+        )
 
     # 6. Calculate retention date
     retention_days = settings.DEFAULT_RETENTION_DAYS
     if case.retention_policy_id:
-        policy = session.query(RetentionPolicy).filter(RetentionPolicy.id == case.retention_policy_id).first()
+        policy = (
+            session.query(RetentionPolicy)
+            .filter(RetentionPolicy.id == case.retention_policy_id)
+            .first()
+        )
         if policy:
             retention_days = policy.retain_days
 
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     retention_until = (now + timedelta(days=retention_days)).date()
 
     collected_at = metadata.get("collected_at")

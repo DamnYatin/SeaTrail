@@ -2,8 +2,9 @@
 Tests 6 and 7: Custody workflow, dual-authorization approvals engine, and check constraints.
 """
 
-from datetime import datetime, timedelta, timezone
 import io
+from datetime import UTC, datetime
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
@@ -11,14 +12,13 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.main import create_app
-from app.models.approvals import ApprovalKind, ApprovalRequest, ApprovalStatus
+from app.models.approvals import ApprovalKind
 from app.models.cases import Case, CaseMember, CaseMemberRole, CaseStatus
-from app.models.custody import CustodyTransfer, TransferStatus
 from app.models.evidence import EvidenceItem, EvidenceStatus, EvidenceType, IntegrityStateEnum
 from app.models.users import User, UserRole
 from app.security.passwords import hash_password
 from app.security.tokens import create_access_token
-from app.services import approvals, custody, storage
+from app.services import approvals, storage
 
 
 @pytest.fixture
@@ -103,20 +103,33 @@ def custody_setup(db_session: Session):
         db_session.add(case)
         db_session.flush()
 
-        db_session.add(CaseMember(case_id=case.id, user_id=inv1.id, case_role=CaseMemberRole.LEAD, added_by=inv1.id))
-        db_session.add(CaseMember(case_id=case.id, user_id=inv2.id, case_role=CaseMemberRole.MEMBER, added_by=inv1.id))
+        db_session.add(
+            CaseMember(
+                case_id=case.id, user_id=inv1.id, case_role=CaseMemberRole.LEAD, added_by=inv1.id
+            )
+        )
+        db_session.add(
+            CaseMember(
+                case_id=case.id, user_id=inv2.id, case_role=CaseMemberRole.MEMBER, added_by=inv1.id
+            )
+        )
         db_session.commit()
 
     # Create evidence item currently with inv1
-    item = db_session.query(EvidenceItem).filter(EvidenceItem.evidence_number == "SL26-0088-E0001A").first()
+    item = (
+        db_session.query(EvidenceItem)
+        .filter(EvidenceItem.evidence_number == "SL26-0088-E0001A")
+        .first()
+    )
     if not item:
         import hashlib
+
         content = b"Custody tracking test item bytes"
         h = hashlib.sha256(content).hexdigest()
         storage_key = f"{case.case_number}/E0001/{h}"
         vid = storage.put_stream("sealtrail-evidence", storage_key, io.BytesIO(content))
 
-        now_utc = datetime.now(timezone.utc)
+        now_utc = datetime.now(UTC)
         item = EvidenceItem(
             evidence_number="SL26-0088-E0001A",
             case_id=case.id,
@@ -157,7 +170,9 @@ def custody_setup(db_session: Session):
     }
 
 
-def test_6_custody_transfers_and_states(client: TestClient, custody_setup: dict, db_session: Session):
+def test_6_custody_transfers_and_states(
+    client: TestClient, custody_setup: dict, db_session: Session
+):
     """Test 6: Internal transfer, acknowledge OK, single open transfer limit, reject, cancel."""
     inv1 = custody_setup["inv1"]
     inv2 = custody_setup["inv2"]
@@ -206,7 +221,9 @@ def test_6_custody_transfers_and_states(client: TestClient, custody_setup: dict,
     assert updated_item.status == EvidenceStatus.IN_CUSTODY
 
 
-def test_7_dual_authorization_enforcement(client: TestClient, custody_setup: dict, db_session: Session):
+def test_7_dual_authorization_enforcement(
+    client: TestClient, custody_setup: dict, db_session: Session
+):
     """Test 7: Requester cannot approve own request (service + DB check constraint); non-supervisor cannot approve."""
     sup1 = custody_setup["sup1"]
     sup2 = custody_setup["sup2"]

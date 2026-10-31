@@ -3,7 +3,8 @@ Dual authorization request and decision schemas.
 """
 
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 from app.models.approvals import ApprovalKind, ApprovalStatus
@@ -12,8 +13,8 @@ from app.models.approvals import ApprovalKind, ApprovalStatus
 class ApprovalCreate(BaseModel):
     kind: ApprovalKind
     justification: str
-    evidence_id: Optional[str] = None
-    payload: Optional[Dict[str, Any]] = None
+    evidence_id: str | None = None
+    payload: dict[str, Any] | None = None
 
 
 class ApprovalDecision(BaseModel):
@@ -24,20 +25,20 @@ class ApprovalResponse(BaseModel):
     id: str
     kind: ApprovalKind
     case_id: str
-    case_number: Optional[str] = None
-    evidence_id: Optional[str] = None
-    evidence_number: Optional[str] = None
+    case_number: str | None = None
+    evidence_id: str | None = None
+    evidence_number: str | None = None
     requested_by: str
-    requester_name: Optional[str] = None
+    requester_name: str | None = None
     justification: str
-    payload: Optional[Dict[str, Any]] = None
+    payload: dict[str, Any] | None = None
     status: ApprovalStatus
-    decided_by: Optional[str] = None
-    decider_name: Optional[str] = None
-    decided_at: Optional[datetime] = None
-    decision_note: Optional[str] = None
+    decided_by: str | None = None
+    decider_name: str | None = None
+    decided_at: datetime | None = None
+    decision_note: str | None = None
     expires_at: datetime
-    executed_at: Optional[datetime] = None
+    executed_at: datetime | None = None
 
     class Config:
         from_attributes = True

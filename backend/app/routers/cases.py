@@ -2,8 +2,8 @@
 Case management, membership assignments, and merged chronological incident timeline.
 """
 
-from datetime import datetime, timezone
-from typing import List, Optional
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -12,7 +12,7 @@ from app.db import get_db
 from app.deps import get_case_with_access, get_current_user, require_permission
 from app.errors import AppError
 from app.models.audit import AuditLog
-from app.models.cases import Case, CaseClassification, CaseMember, CaseMemberRole, CaseStatus
+from app.models.cases import Case, CaseMember, CaseMemberRole, CaseStatus
 from app.models.links import CaseEvent
 from app.models.users import User, UserRole
 from app.schemas.cases import (
@@ -30,17 +30,17 @@ router = APIRouter(prefix="/api/v1/cases", tags=["Cases"])
 
 def generate_case_number(session: Session) -> str:
     """Generate case number in SL{yy}-{seq:04d} format."""
-    yy = datetime.now(timezone.utc).strftime("%y")
+    yy = datetime.now(UTC).strftime("%y")
     count = session.query(func.count(Case.id)).scalar() or 0
     return f"SL{yy}-{(count + 1):04d}"
 
 
-@router.get("", response_model=List[CaseResponse])
+@router.get("", response_model=list[CaseResponse])
 def list_cases(
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[CaseResponse]:
+) -> list[CaseResponse]:
     """
     List accessible cases based on caller role:
     - ADMIN cannot view cases (separation of duties -> 403).
@@ -49,6 +49,7 @@ def list_cases(
     """
     if user.role == UserRole.ADMIN:
         from app.services.audit_chain import append_independent
+
         ip = request.client.host if request.client else None
         append_independent(
             actor=user,
@@ -67,9 +68,7 @@ def list_cases(
 
     # Members only
     user_case_ids = (
-        session.query(CaseMember.case_id)
-        .filter(CaseMember.user_id == user.id)
-        .subquery()
+        session.query(CaseMember.case_id).filter(CaseMember.user_id == user.id).subquery()
     )
     return (
         session.query(Case)
@@ -152,7 +151,7 @@ def close_case(
         return case
 
     case.status = CaseStatus.CLOSED
-    case.closed_at = datetime.now(timezone.utc)
+    case.closed_at = datetime.now(UTC)
 
     append(
         session=session,
@@ -165,13 +164,13 @@ def close_case(
     return case
 
 
-@router.get("/{case_id}/members", response_model=List[CaseMemberResponse])
+@router.get("/{case_id}/members", response_model=list[CaseMemberResponse])
 def get_members(
     case_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[CaseMemberResponse]:
+) -> list[CaseMemberResponse]:
     """List members assigned to the case."""
     get_case_with_access(case_id, user, session, request=request)
     members = session.query(CaseMember).filter(CaseMember.case_id == case_id).all()
@@ -192,7 +191,9 @@ def get_members(
     return results
 
 
-@router.post("/{case_id}/members", response_model=CaseMemberResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{case_id}/members", response_model=CaseMemberResponse, status_code=status.HTTP_201_CREATED
+)
 def add_member(
     case_id: str,
     req: CaseMemberCreate,
@@ -204,13 +205,27 @@ def add_member(
     ip = request.client.host if request.client else None
     case = get_case_with_access(case_id, user, session, request=request, require_lead=True)
 
-    target_user = session.query(User).filter(User.id == req.user_id, User.is_active == True).first()
+    target_user = (
+        session.query(User).filter(User.id == req.user_id, User.is_active.is_(True)).first()
+    )
     if not target_user:
-        raise AppError(code="USER_NOT_FOUND", message=f"User {req.user_id} not found or inactive", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="USER_NOT_FOUND",
+            message=f"User {req.user_id} not found or inactive",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
-    existing = session.query(CaseMember).filter(CaseMember.case_id == case_id, CaseMember.user_id == req.user_id).first()
+    existing = (
+        session.query(CaseMember)
+        .filter(CaseMember.case_id == case_id, CaseMember.user_id == req.user_id)
+        .first()
+    )
     if existing:
-        raise AppError(code="MEMBER_EXISTS", message="User is already a member of this case", status_code=status.HTTP_409_CONFLICT)
+        raise AppError(
+            code="MEMBER_EXISTS",
+            message="User is already a member of this case",
+            status_code=status.HTTP_409_CONFLICT,
+        )
 
     member = CaseMember(
         case_id=case_id,
@@ -253,9 +268,17 @@ def remove_member(
     ip = request.client.host if request.client else None
     case = get_case_with_access(case_id, user, session, request=request, require_lead=True)
 
-    member = session.query(CaseMember).filter(CaseMember.case_id == case_id, CaseMember.user_id == user_id).first()
+    member = (
+        session.query(CaseMember)
+        .filter(CaseMember.case_id == case_id, CaseMember.user_id == user_id)
+        .first()
+    )
     if not member:
-        raise AppError(code="MEMBER_NOT_FOUND", message="User is not a member of this case", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="MEMBER_NOT_FOUND",
+            message="User is not a member of this case",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     session.delete(member)
 
@@ -270,20 +293,20 @@ def remove_member(
     return {"status": "ok", "message": "Member removed successfully"}
 
 
-@router.get("/{case_id}/timeline", response_model=List[CaseTimelineItem])
+@router.get("/{case_id}/timeline", response_model=list[CaseTimelineItem])
 def get_timeline(
     case_id: str,
     request: Request,
     session: Session = Depends(get_db),
     user: User = Depends(get_current_user),
-) -> List[CaseTimelineItem]:
+) -> list[CaseTimelineItem]:
     """
     Get merged chronological timeline for the case.
     Merges manually logged case events and immutable audit chain entries.
     """
     get_case_with_access(case_id, user, session, request=request)
 
-    timeline: List[CaseTimelineItem] = []
+    timeline: list[CaseTimelineItem] = []
 
     # 1. Fetch Case Events
     events = session.query(CaseEvent).filter(CaseEvent.case_id == case_id).all()
@@ -316,7 +339,11 @@ def get_timeline(
         .all()
     )
     for entry in audit_entries:
-        actor = session.query(User).filter(User.id == entry.actor_id).first() if entry.actor_id else None
+        actor = (
+            session.query(User).filter(User.id == entry.actor_id).first()
+            if entry.actor_id
+            else None
+        )
         timeline.append(
             CaseTimelineItem(
                 id=f"audit-{entry.seq}",

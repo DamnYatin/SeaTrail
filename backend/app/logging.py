@@ -5,13 +5,14 @@ Sensitive credentials and file bodies are strictly scrubbed.
 
 import logging
 import sys
-from typing import Any, Dict
 
 import structlog
 from structlog.types import EventDict, WrappedLogger
 
 
-def filter_sensitive_keys(logger: WrappedLogger, method_name: str, event_dict: EventDict) -> EventDict:
+def filter_sensitive_keys(
+    logger: WrappedLogger, method_name: str, event_dict: EventDict
+) -> EventDict:
     sensitive_keys = {
         "password",
         "password_hash",

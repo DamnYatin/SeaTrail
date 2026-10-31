@@ -5,14 +5,13 @@ Retention and compliance service:
 - Approved evidence disposal with permanent SHA-256 tombstone preserving audit trail
 """
 
-from datetime import date, datetime, timedelta, timezone
-from typing import List, Optional
+from datetime import UTC, date, datetime, timedelta
+
 from sqlalchemy import asc
 from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.errors import AppError
-from app.logging import logger
 from app.models.approvals import ApprovalKind, ApprovalRequest, ApprovalStatus
 from app.models.cases import Case, RetentionPolicy
 from app.models.evidence import EvidenceItem, EvidenceStatus
@@ -20,21 +19,34 @@ from app.models.users import User
 from app.services import storage
 from app.services.audit_chain import AuditAction, append
 
-
 DEFAULT_POLICIES = [
-    {"name": "Standard (5 Years)", "retain_days": 1825, "description": "Standard evidence retention policy"},
-    {"name": "Extended (10 Years)", "retain_days": 3650, "description": "Extended statutory felony retention"},
-    {"name": "Short (90 Days)", "retain_days": 90, "description": "Short evaluation and temporary media retention"},
+    {
+        "name": "Standard (5 Years)",
+        "retain_days": 1825,
+        "description": "Standard evidence retention policy",
+    },
+    {
+        "name": "Extended (10 Years)",
+        "retain_days": 3650,
+        "description": "Extended statutory felony retention",
+    },
+    {
+        "name": "Short (90 Days)",
+        "retain_days": 90,
+        "description": "Short evaluation and temporary media retention",
+    },
 ]
 
 
-def ensure_default_policies(session: Session) -> List[RetentionPolicy]:
+def ensure_default_policies(session: Session) -> list[RetentionPolicy]:
     """Ensure baseline retention policies are seeded."""
     policies = session.query(RetentionPolicy).all()
     if not policies:
         created = []
         for p in DEFAULT_POLICIES:
-            rp = RetentionPolicy(name=p["name"], retain_days=p["retain_days"], description=p["description"])
+            rp = RetentionPolicy(
+                name=p["name"], retain_days=p["retain_days"], description=p["description"]
+            )
             session.add(rp)
             created.append(rp)
         session.flush()
@@ -42,15 +54,19 @@ def ensure_default_policies(session: Session) -> List[RetentionPolicy]:
     return policies
 
 
-def list_retention_policies(session: Session) -> List[RetentionPolicy]:
+def list_retention_policies(session: Session) -> list[RetentionPolicy]:
     ensure_default_policies(session)
     return session.query(RetentionPolicy).order_by(asc(RetentionPolicy.retain_days)).all()
 
 
-def create_retention_policy(session: Session, name: str, retain_days: int, description: Optional[str] = None) -> RetentionPolicy:
+def create_retention_policy(
+    session: Session, name: str, retain_days: int, description: str | None = None
+) -> RetentionPolicy:
     existing = session.query(RetentionPolicy).filter(RetentionPolicy.name == name).first()
     if existing:
-        raise AppError(code="DUPLICATE_POLICY", message=f"Policy '{name}' already exists", status_code=409)
+        raise AppError(
+            code="DUPLICATE_POLICY", message=f"Policy '{name}' already exists", status_code=409
+        )
 
     policy = RetentionPolicy(name=name, retain_days=retain_days, description=description)
     session.add(policy)
@@ -63,7 +79,7 @@ def place_legal_hold_evidence(
     evidence_id: str,
     actor: User,
     reason: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> EvidenceItem:
     """Place a legal hold directly on an evidence item."""
     evidence = session.query(EvidenceItem).filter(EvidenceItem.id == evidence_id).first()
@@ -79,7 +95,11 @@ def place_legal_hold_evidence(
         action=AuditAction.LEGAL_HOLD_PLACED,
         case_id=evidence.case_id,
         evidence_id=evidence.id,
-        payload={"reason": reason, "target_type": "EVIDENCE", "evidence_number": evidence.evidence_number},
+        payload={
+            "reason": reason,
+            "target_type": "EVIDENCE",
+            "evidence_number": evidence.evidence_number,
+        },
         ip=ip,
     )
     return evidence
@@ -90,7 +110,7 @@ def place_legal_hold_case(
     case_id: str,
     actor: User,
     reason: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> Case:
     """Place a legal hold across an entire case and all its evidence items."""
     case = session.query(Case).filter(Case.id == case_id).first()
@@ -124,7 +144,7 @@ def request_legal_hold_release(
     target_id: str,
     requester: User,
     justification: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> ApprovalRequest:
     """
     Request release of a legal hold requiring dual authorization.
@@ -145,9 +165,11 @@ def request_legal_hold_release(
             raise AppError(code="NOT_FOUND", message="Case not found", status_code=404)
         case_id = case.id
     else:
-        raise AppError(code="INVALID_TARGET", message="Target must be 'EVIDENCE' or 'CASE'", status_code=422)
+        raise AppError(
+            code="INVALID_TARGET", message="Target must be 'EVIDENCE' or 'CASE'", status_code=422
+        )
 
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
+    expires_at = datetime.now(UTC) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
     req = ApprovalRequest(
         kind=ApprovalKind.LEGAL_HOLD_RELEASE,
         case_id=case_id,
@@ -177,7 +199,7 @@ def execute_legal_hold_release(
     session: Session,
     approval_id: str,
     actor: User,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> None:
     """
     Release legal hold upon dual-authorization approval.
@@ -187,7 +209,11 @@ def execute_legal_hold_release(
         raise AppError(code="NOT_FOUND", message="Approval request not found", status_code=404)
 
     if approval.status != ApprovalStatus.APPROVED:
-        raise AppError(code="NOT_APPROVED", message=f"Approval status is {approval.status.value}", status_code=409)
+        raise AppError(
+            code="NOT_APPROVED",
+            message=f"Approval status is {approval.status.value}",
+            status_code=409,
+        )
 
     target_type = approval.payload.get("target_type")
     target_id = approval.payload.get("target_id")
@@ -205,7 +231,7 @@ def execute_legal_hold_release(
                 it.legal_hold = False
 
     approval.status = ApprovalStatus.EXECUTED
-    approval.executed_at = datetime.now(timezone.utc)
+    approval.executed_at = datetime.now(UTC)
     session.flush()
 
     append(
@@ -219,7 +245,7 @@ def execute_legal_hold_release(
     )
 
 
-def list_retention_due(session: Session, days_threshold: int = 90) -> List[dict]:
+def list_retention_due(session: Session, days_threshold: int = 90) -> list[dict]:
     """
     List items due for retention expiration or past due.
     """
@@ -228,7 +254,7 @@ def list_retention_due(session: Session, days_threshold: int = 90) -> List[dict]
         session.query(EvidenceItem)
         .filter(
             EvidenceItem.status != EvidenceStatus.DISPOSED,
-            EvidenceItem.retention_until != None,
+            EvidenceItem.retention_until is not None,
             EvidenceItem.retention_until <= cutoff,
         )
         .all()
@@ -241,17 +267,19 @@ def list_retention_due(session: Session, days_threshold: int = 90) -> List[dict]
         has_hold = it.legal_hold or case_hold
 
         days_remaining = (it.retention_until - date.today()).days if it.retention_until else 0
-        results.append({
-            "evidence_id": it.id,
-            "evidence_number": it.evidence_number,
-            "item_name": it.item_name,
-            "case_id": it.case_id,
-            "case_number": case.case_number if case else None,
-            "retention_until": it.retention_until,
-            "days_remaining": days_remaining,
-            "legal_hold": has_hold,
-            "status": it.status.value if hasattr(it.status, "value") else str(it.status),
-        })
+        results.append(
+            {
+                "evidence_id": it.id,
+                "evidence_number": it.evidence_number,
+                "item_name": it.item_name,
+                "case_id": it.case_id,
+                "case_number": case.case_number if case else None,
+                "retention_until": it.retention_until,
+                "days_remaining": days_remaining,
+                "legal_hold": has_hold,
+                "status": it.status.value if hasattr(it.status, "value") else str(it.status),
+            }
+        )
 
     return results
 
@@ -261,7 +289,7 @@ def request_disposal(
     evidence_id: str,
     requester: User,
     justification: str,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> ApprovalRequest:
     """
     Initiate disposal request. Blocked if legal hold exists or retention date not reached.
@@ -288,7 +316,7 @@ def request_disposal(
             status_code=409,
         )
 
-    expires_at = datetime.now(timezone.utc) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
+    expires_at = datetime.now(UTC) + timedelta(hours=settings.APPROVAL_EXPIRY_HOURS)
     req = ApprovalRequest(
         kind=ApprovalKind.DISPOSAL,
         case_id=evidence.case_id,
@@ -318,7 +346,7 @@ def execute_disposal(
     session: Session,
     approval_id: str,
     actor: User,
-    ip: Optional[str] = None,
+    ip: str | None = None,
 ) -> EvidenceItem:
     """
     Execute disposal after dual-authorization approval.
@@ -331,7 +359,11 @@ def execute_disposal(
         raise AppError(code="NOT_FOUND", message="Approval request not found", status_code=404)
 
     if approval.status != ApprovalStatus.APPROVED:
-        raise AppError(code="NOT_APPROVED", message=f"Approval status is {approval.status.value}", status_code=409)
+        raise AppError(
+            code="NOT_APPROVED",
+            message=f"Approval status is {approval.status.value}",
+            status_code=409,
+        )
 
     evidence = session.query(EvidenceItem).filter(EvidenceItem.id == approval.evidence_id).first()
     if not evidence:
@@ -339,13 +371,17 @@ def execute_disposal(
 
     case = session.query(Case).filter(Case.id == evidence.case_id).first()
     if evidence.legal_hold or (case and case.legal_hold):
-        raise AppError(code="DISPOSAL_BLOCKED_BY_HOLD", message="Disposal blocked by legal hold", status_code=409)
+        raise AppError(
+            code="DISPOSAL_BLOCKED_BY_HOLD",
+            message="Disposal blocked by legal hold",
+            status_code=409,
+        )
 
     # 1. Permanently delete all object versions from S3/MinIO
     storage.delete_all_versions(bucket=evidence.storage_bucket, key=evidence.storage_key)
 
     # 2. Update status and disposed_at
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     evidence.status = EvidenceStatus.DISPOSED
     evidence.disposed_at = now
 

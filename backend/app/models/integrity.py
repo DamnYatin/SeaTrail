@@ -4,7 +4,8 @@ Integrity state singleton and evidence sweep run models.
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     BigInteger,
     Boolean,
@@ -14,7 +15,6 @@ from sqlalchemy import (
     ForeignKey,
     Integer,
     String,
-    Text,
 )
 
 from app.db import Base
@@ -36,11 +36,12 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class IntegrityState(Base):
     """Singleton table caching current audit chain health."""
+
     __tablename__ = "integrity_state"
 
     id = Column(Integer, primary_key=True, default=1)
@@ -53,6 +54,7 @@ class IntegrityState(Base):
 
 class IntegrityRun(Base):
     """Tracks background evidence verification sweeps."""
+
     __tablename__ = "integrity_runs"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)

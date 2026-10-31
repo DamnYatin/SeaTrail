@@ -2,10 +2,11 @@
 Test 9: Integrity engine, anomaly rules, deduplication, scheduled chain check, and alerts API.
 """
 
-from datetime import datetime, timedelta, timezone
 import hashlib
 import io
 import uuid
+from datetime import UTC, datetime, timedelta
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -14,8 +15,7 @@ from app.config import settings
 from app.db import get_db
 from app.jobs.scheduler import run_scheduled_chain_check
 from app.main import create_app
-from app.models.alerts import Alert, AlertSeverity, AlertStatus
-from app.models.audit import AuditLog
+from app.models.alerts import AlertSeverity, AlertStatus
 from app.models.cases import Case, CaseClassification, CaseMember, CaseMemberRole, CaseStatus
 from app.models.custody import CustodyTransfer, TransferStatus
 from app.models.evidence import EvidenceItem, EvidenceType, IntegrityStateEnum
@@ -37,8 +37,6 @@ def client(db_session: Session):
         yield test_client
     test_app.dependency_overrides.clear()
 
-
-import uuid
 
 @pytest.fixture
 def integrity_setup(db_session: Session):
@@ -75,10 +73,16 @@ def integrity_setup(db_session: Session):
     db_session.add(case)
     db_session.flush()
 
-    db_session.add_all([
-        CaseMember(case_id=case.id, user_id=sup.id, case_role=CaseMemberRole.MEMBER, added_by=sup.id),
-        CaseMember(case_id=case.id, user_id=inv.id, case_role=CaseMemberRole.LEAD, added_by=sup.id),
-    ])
+    db_session.add_all(
+        [
+            CaseMember(
+                case_id=case.id, user_id=sup.id, case_role=CaseMemberRole.MEMBER, added_by=sup.id
+            ),
+            CaseMember(
+                case_id=case.id, user_id=inv.id, case_role=CaseMemberRole.LEAD, added_by=sup.id
+            ),
+        ]
+    )
     db_session.flush()
 
     storage.set_mock_storage(True)
@@ -94,7 +98,7 @@ def integrity_setup(db_session: Session):
         item_name="IntegTestFile",
         description="Integrity test file",
         collected_by_user_id=inv.id,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         original_filename="sample.bin",
         content_type="application/octet-stream",
         size_bytes=len(content),
@@ -163,7 +167,7 @@ def test_anomaly_rules_and_deduplication(db_session: Session, integrity_setup):
     assert alt2.severity == AlertSeverity.HIGH
 
     # 3. MISSING_ACK
-    now = datetime.now(timezone.utc)
+    now = datetime.now(UTC)
     tr = CustodyTransfer(
         evidence_id=item.id,
         from_user_id=inv.id,
@@ -213,7 +217,7 @@ def test_anomaly_rules_and_deduplication(db_session: Session, integrity_setup):
         actor_id=inv.id,
         action_name="EVIDENCE_VIEWED",
         audit_seq=1,
-        ts=datetime(2026, 1, 1, 2, 0, 0, tzinfo=timezone.utc),  # 2 AM UTC = off hours
+        ts=datetime(2026, 1, 1, 2, 0, 0, tzinfo=UTC),  # 2 AM UTC = off hours
     )
     assert off_hours_alert is not None
     assert off_hours_alert.rule == "OFF_HOURS_ACCESS"
@@ -256,7 +260,9 @@ def test_alerts_and_audit_api(client: TestClient, db_session: Session, integrity
     assert len(alerts) >= 1
 
     # POST /alerts/{id}/acknowledge
-    resp = client.post(f"/api/v1/alerts/{alert.id}/acknowledge", headers={"Authorization": f"Bearer {sup_token}"})
+    resp = client.post(
+        f"/api/v1/alerts/{alert.id}/acknowledge", headers={"Authorization": f"Bearer {sup_token}"}
+    )
     assert resp.status_code == 200
     assert resp.json()["status"] == AlertStatus.ACKNOWLEDGED.value
 
@@ -277,7 +283,9 @@ def test_alerts_and_audit_api(client: TestClient, db_session: Session, integrity
     assert resp.json()["checked"] >= 1
 
     # POST /integrity/evidence-sweep
-    resp = client.post("/api/v1/integrity/evidence-sweep", headers={"Authorization": f"Bearer {sup_token}"})
+    resp = client.post(
+        "/api/v1/integrity/evidence-sweep", headers={"Authorization": f"Bearer {sup_token}"}
+    )
     assert resp.status_code == 200
     sweep = resp.json()
     assert sweep["status"] == "COMPLETED"

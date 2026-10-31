@@ -4,19 +4,17 @@ Supports stream uploading, pinned version retrieval, and test-mock fallbacks.
 """
 
 import io
-import os
 import uuid
-from typing import BinaryIO, Dict, List, Optional, Tuple
+from typing import BinaryIO
 
 import boto3
 from botocore.client import Config
-from botocore.exceptions import ClientError
 
 from app.config import settings
 from app.logging import logger
 
 _s3_client = None
-_in_memory_storage: Dict[str, List[Dict[str, bytes]]] = {}
+_in_memory_storage: dict[str, list[dict[str, bytes]]] = {}
 _force_mock_storage = False
 
 
@@ -36,7 +34,9 @@ def get_s3_client(use_disposer: bool = False):
     try:
         client = boto3.client(
             "s3",
-            endpoint_url=settings.S3_ENDPOINT_URL_HOST if "127.0.0.1" in settings.S3_ENDPOINT_URL_HOST else settings.S3_ENDPOINT_URL,
+            endpoint_url=settings.S3_ENDPOINT_URL_HOST
+            if "127.0.0.1" in settings.S3_ENDPOINT_URL_HOST
+            else settings.S3_ENDPOINT_URL,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
             region_name=settings.S3_REGION,
@@ -74,15 +74,17 @@ def put_stream(
     version_id = str(uuid.uuid4())
     if full_key not in _in_memory_storage:
         _in_memory_storage[full_key] = []
-    _in_memory_storage[full_key].append({"version_id": version_id, "data": data, "content_type": content_type})
+    _in_memory_storage[full_key].append(
+        {"version_id": version_id, "data": data, "content_type": content_type}
+    )
     return version_id
 
 
 def get_stream(
     bucket: str,
     key: str,
-    version_id: Optional[str] = None,
-) -> Tuple[BinaryIO, str]:
+    version_id: str | None = None,
+) -> tuple[BinaryIO, str]:
     """Retrieve object stream and content type, optionally pinned to a version ID."""
     client = get_s3_client()
     if client is not None:
@@ -113,8 +115,8 @@ def get_stream(
 def head(
     bucket: str,
     key: str,
-    version_id: Optional[str] = None,
-) -> Dict[str, str]:
+    version_id: str | None = None,
+) -> dict[str, str]:
     """Get metadata and latest version id for an object."""
     client = get_s3_client()
     if client is not None:
@@ -149,7 +151,7 @@ def head(
     }
 
 
-def latest_version_id(bucket: str, key: str) -> Optional[str]:
+def latest_version_id(bucket: str, key: str) -> str | None:
     """Get latest assigned version ID for key."""
     try:
         info = head(bucket, key)

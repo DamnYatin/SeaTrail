@@ -3,7 +3,7 @@ User management request and response schemas.
 """
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, EmailStr
 
 from app.models.users import UserRole
@@ -17,10 +17,10 @@ class UserCreate(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    full_name: Optional[str] = None
-    role: Optional[UserRole] = None
-    is_active: Optional[bool] = None
-    password: Optional[str] = None
+    full_name: str | None = None
+    role: UserRole | None = None
+    is_active: bool | None = None
+    password: str | None = None
 
 
 class UserResponse(BaseModel):
@@ -30,8 +30,8 @@ class UserResponse(BaseModel):
     role: UserRole
     is_active: bool
     failed_login_count: int
-    locked_until: Optional[datetime] = None
-    last_login_at: Optional[datetime] = None
+    locked_until: datetime | None = None
+    last_login_at: datetime | None = None
     created_at: datetime
 
     class Config:

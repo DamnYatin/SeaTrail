@@ -4,14 +4,15 @@ Dual-authorization approval request model with check constraint enforcing separa
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
+    JSON,
     CheckConstraint,
     Column,
     DateTime,
     Enum,
     ForeignKey,
-    JSON,
     String,
     Text,
 )
@@ -41,7 +42,7 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ApprovalRequest(Base):

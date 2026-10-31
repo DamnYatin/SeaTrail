@@ -2,9 +2,9 @@
 
 | Metric | Status |
 |--------|--------|
-| Last verified stage | **Stage 9b Frontend oversight** |
-| Current stage in progress | **Stage 10 Tamper simulator & hardening** |
-| Passed tests | 17 backend tests passing + Frontend tsc, eslint, build passing |
+| Last verified stage | **Stage 10 Tamper simulator & hardening** |
+| Current stage in progress | **Stage 11 Docs and final QA** |
+| Passed tests | 18 backend tests passing + Frontend tsc, eslint, build passing |
 | Known issues | Docker Compose CLI absent on Windows workstation; codebase designed with container-parity and verified with in-process test fixtures. |
 
 ## Completed Stages
@@ -21,6 +21,7 @@
 - [x] **Stage 9a Frontend workflows** (`8774c2b`): Create Evidence dialog with chunked client-side hashing via hash-wasm (real-time progress bar), all Action menu flows (Transfer Custody, Acknowledge Receipt, Add Annotation, Create Defensible Link, Legal Hold placement/release request, Export Package request, PDF/JSON reports), Transfers Page with overdue SLA tracking and direct receipt acknowledgement, Approvals Page with dual-authorization two-person rule enforcement (self-approval blocked).
 - [x] **Stage 9b Frontend oversight** (`feat(ui): dashboard, audit log, integrity, alerts, reports, compliance`): Dashboard with live chain status card and verification trigger, Cases management with merged chronological incident timeline, Audit log with side drawer canonical JSON inspection and Ed25519 checkpoints table, Integrity sweep and audit chain verify UI, Alerts page with acknowledge and resolution notes, Reports page with independent report verification card, Retention & disposal tracking, Users admin view, and QR code `/e/:evidenceNumber` check character resolution route.
 
+- [x] **Stage 10 Tamper simulator & hardening** (`feat(demo): synthetic seed data, tamper simulator, hardening`): `backend/scripts/tamper_demo.py` multi-vector attack simulator implementing `audit`, `audit-rewrite`, `object`, `evidence-hash`, and `restore`. Test 13 ensuring immutability of audit timestamps across all API routes. Formatted and linted backend and frontend.
+
 ## Next Stages
-- [ ] **Stage 10 Tamper simulator & hardening** (tamper_demo.py live attack simulator, security hardening)
 - [ ] **Stage 11 Docs and final QA** (Architecture, threat model, demo script, QA checklist, final tag)

@@ -2,8 +2,9 @@
 FastAPI dependency providers for authentication, RBAC authorization, and case-isolation.
 """
 
-from typing import Callable, List, Optional
-from fastapi import Depends, Header, Request, status
+from collections.abc import Callable
+
+from fastapi import Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
@@ -20,21 +21,33 @@ security_bearer = HTTPBearer(auto_error=False)
 
 def get_current_user(
     request: Request,
-    creds: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer),
+    creds: HTTPAuthorizationCredentials | None = Depends(security_bearer),
     session: Session = Depends(get_db),
 ) -> User:
     """Extract and validate the currently authenticated user from Bearer JWT."""
     if not creds or not creds.credentials:
-        raise AppError(code="UNAUTHORIZED", message="Authentication credentials missing", status_code=status.HTTP_401_UNAUTHORIZED)
+        raise AppError(
+            code="UNAUTHORIZED",
+            message="Authentication credentials missing",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
     payload = decode_token(creds.credentials, expected_type="access")
     user_id = payload.get("sub")
     if not user_id:
-        raise AppError(code="INVALID_TOKEN", message="Token payload missing subject", status_code=status.HTTP_401_UNAUTHORIZED)
+        raise AppError(
+            code="INVALID_TOKEN",
+            message="Token payload missing subject",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
-    user = session.query(User).filter(User.id == user_id, User.is_active == True).first()
+    user = session.query(User).filter(User.id == user_id, User.is_active.is_(True)).first()
     if not user:
-        raise AppError(code="USER_NOT_FOUND", message="User inactive or does not exist", status_code=status.HTTP_401_UNAUTHORIZED)
+        raise AppError(
+            code="USER_NOT_FOUND",
+            message="User inactive or does not exist",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
 
     # Attach user to request state for request logging
     request.state.current_user = user
@@ -43,6 +56,7 @@ def get_current_user(
 
 def require_role(*allowed_roles: UserRole) -> Callable:
     """Dependency ensuring user belongs to one of the specified roles."""
+
     def role_checker(request: Request, user: User = Depends(get_current_user)) -> User:
         if user.role not in allowed_roles:
             ip = request.client.host if request.client else None
@@ -58,11 +72,13 @@ def require_role(*allowed_roles: UserRole) -> Callable:
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         return user
+
     return role_checker
 
 
 def require_permission(perm: Permission) -> Callable:
     """Dependency verifying role has the declared permission."""
+
     def perm_checker(request: Request, user: User = Depends(get_current_user)) -> User:
         if not has_permission(user.role, perm):
             ip = request.client.host if request.client else None
@@ -78,6 +94,7 @@ def require_permission(perm: Permission) -> Callable:
                 status_code=status.HTTP_403_FORBIDDEN,
             )
         return user
+
     return perm_checker
 
 
@@ -85,7 +102,7 @@ def get_case_with_access(
     case_id: str,
     user: User,
     session: Session,
-    request: Optional[Request] = None,
+    request: Request | None = None,
     require_lead: bool = False,
     allow_observer: bool = True,
 ) -> Case:
@@ -116,7 +133,11 @@ def get_case_with_access(
 
     case = session.query(Case).filter(Case.id == case_id).first()
     if not case:
-        raise AppError(code="CASE_NOT_FOUND", message=f"Case {case_id} not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="CASE_NOT_FOUND",
+            message=f"Case {case_id} not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
 
     # Global roles
     if user.role in (UserRole.SUPERVISOR, UserRole.AUDITOR):
@@ -128,7 +149,11 @@ def get_case_with_access(
                 payload={"reason": "LEAD_REQUIRED"},
                 ip=ip,
             )
-            raise AppError(code="FORBIDDEN", message="Action requires Case Lead status", status_code=status.HTTP_403_FORBIDDEN)
+            raise AppError(
+                code="FORBIDDEN",
+                message="Action requires Case Lead status",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
         return case
 
     # Membership check for INVESTIGATOR / CUSTODIAN

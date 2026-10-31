@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, Request, status
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.deps import get_current_user, require_permission
+from app.deps import require_permission
 from app.errors import AppError
 from app.models.integrity import IntegrityRun
 from app.models.users import User
@@ -36,5 +36,9 @@ def get_integrity_run(
 ):
     run = session.query(IntegrityRun).filter(IntegrityRun.id == run_id).first()
     if not run:
-        raise AppError(code="NOT_FOUND", message="Integrity run not found", status_code=status.HTTP_404_NOT_FOUND)
+        raise AppError(
+            code="NOT_FOUND",
+            message="Integrity run not found",
+            status_code=status.HTTP_404_NOT_FOUND,
+        )
     return run

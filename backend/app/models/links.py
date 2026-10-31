@@ -4,7 +4,8 @@ Collaboration and linking models: Annotations, People, Case Events, Case Notes, 
 
 import enum
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 from sqlalchemy import (
     Column,
     DateTime,
@@ -40,11 +41,12 @@ def generate_uuid():
 
 
 def utc_now():
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class Annotation(Base):
     """Append-only evidence annotations."""
+
     __tablename__ = "annotations"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
@@ -60,6 +62,7 @@ class Annotation(Base):
 
 class Person(Base):
     """Persons of interest linked to cases."""
+
     __tablename__ = "people"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
@@ -74,6 +77,7 @@ class Person(Base):
 
 class CaseEvent(Base):
     """Case milestone events forming the incident timeline."""
+
     __tablename__ = "case_events"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
@@ -87,6 +91,7 @@ class CaseEvent(Base):
 
 class CaseNote(Base):
     """Append-only case investigation notes."""
+
     __tablename__ = "case_notes"
 
     id = Column(String(36), primary_key=True, default=generate_uuid)
@@ -101,6 +106,7 @@ class CaseNote(Base):
 
 class EvidenceLink(Base):
     """Links connecting evidence to people, events, notes, or other evidence."""
+
     __tablename__ = "evidence_links"
     __table_args__ = (
         UniqueConstraint(

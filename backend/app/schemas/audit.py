@@ -3,23 +3,24 @@ Audit log, chain verification, and checkpoint schemas.
 """
 
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any
+
 from pydantic import BaseModel
 
 
 class AuditEntryResponse(BaseModel):
     seq: int
     ts: datetime
-    actor_id: Optional[str] = None
-    actor_name: Optional[str] = None
-    actor_role: Optional[str] = None
+    actor_id: str | None = None
+    actor_name: str | None = None
+    actor_role: str | None = None
     action: str
-    case_id: Optional[str] = None
-    case_number: Optional[str] = None
-    evidence_id: Optional[str] = None
-    evidence_number: Optional[str] = None
-    payload: Dict[str, Any]
-    ip: Optional[str] = None
+    case_id: str | None = None
+    case_number: str | None = None
+    evidence_id: str | None = None
+    evidence_number: str | None = None
+    payload: dict[str, Any]
+    ip: str | None = None
     prev_hash: str
     entry_hash: str
 
@@ -28,7 +29,7 @@ class AuditEntryResponse(BaseModel):
 
 
 class AuditListResponse(BaseModel):
-    items: List[AuditEntryResponse]
+    items: list[AuditEntryResponse]
     total: int
     head_seq: int
     chain_ok: bool
@@ -39,8 +40,8 @@ class AuditVerifyResponse(BaseModel):
     checked: int
     head_seq: int
     head_hash: str
-    first_broken_seq: Optional[int] = None
-    reason: Optional[str] = None
+    first_broken_seq: int | None = None
+    reason: str | None = None
 
 
 class CheckpointResponse(BaseModel):
@@ -50,7 +51,7 @@ class CheckpointResponse(BaseModel):
     signature_b64: str
     public_key_id: str
     created_at: datetime
-    created_by: Optional[str] = None
+    created_by: str | None = None
 
     class Config:
         from_attributes = True
@@ -61,7 +62,7 @@ class SweepRunResponse(BaseModel):
     kind: str
     started_by: str
     started_at: datetime
-    finished_at: Optional[datetime] = None
+    finished_at: datetime | None = None
     total: int
     checked: int
     failed: int

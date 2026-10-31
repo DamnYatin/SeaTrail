@@ -5,16 +5,13 @@ device/source, acquisition tool) while preserving mandatory review, expert, and 
 """
 
 import io
-from datetime import datetime, timezone
-from typing import Optional
+from datetime import UTC, datetime
 
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.platypus import (
     HRFlowable,
-    KeepTogether,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -31,8 +28,8 @@ from app.services.audit_chain import AuditAction, append
 def generate_bsa_certificate_pdf(
     session: Session,
     evidence: EvidenceItem,
-    actor: Optional[User] = None,
-    ip: Optional[str] = None,
+    actor: User | None = None,
+    ip: str | None = None,
 ) -> bytes:
     """
     Generate statutory draft certificate under Section 63(4)(c) of the Bharatiya Sakshya Adhiniyam, 2023.
@@ -113,10 +110,17 @@ def generate_bsa_certificate_pdf(
         )
     )
     story.append(Spacer(1, 4))
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#94a3b8"), spaceAfter=8))
+    story.append(
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#94a3b8"), spaceAfter=8)
+    )
 
     # PART A
-    story.append(Paragraph("PART A<br/><font size=8>(To be filled by the Party producing the electronic record)</font>", part_header))
+    story.append(
+        Paragraph(
+            "PART A<br/><font size=8>(To be filled by the Party producing the electronic record)</font>",
+            part_header,
+        )
+    )
     story.append(
         Paragraph(
             "I, the undersigned, hereby certify the particulars of the electronic record produced herein:",
@@ -125,36 +129,67 @@ def generate_bsa_certificate_pdf(
     )
     story.append(Spacer(1, 4))
 
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    datetime.now(UTC).strftime("%Y-%m-%d %H:%M:%S UTC")
     part_a_data = [
-        [Paragraph("<b>1. Description of Electronic Record:</b>", body_style),
-         Paragraph(f"{evidence.item_name} ({evidence.original_filename or 'N/A'})", body_style)],
-        [Paragraph("<b>2. Evidence Registration ID:</b>", body_style),
-         Paragraph(str(evidence.evidence_number), mono_style)],
-        [Paragraph("<b>3. Source / Device Details:</b>", body_style),
-         Paragraph(f"Make: {evidence.device_make or 'N/A'} | Model: {evidence.device_model or 'N/A'} | Serial: {evidence.device_serial or 'N/A'}", body_style)],
-        [Paragraph("<b>4. Source Description:</b>", body_style),
-         Paragraph(str(evidence.source_description or "Digital media item"), body_style)],
-        [Paragraph("<b>5. Acquisition Method & Tool:</b>", body_style),
-         Paragraph(f"Method: {evidence.acquisition_method or 'N/A'} | Tool: {evidence.acquisition_tool or 'N/A'}", body_style)],
-        [Paragraph("<b>6. Cryptographic Hash Algorithm:</b>", body_style),
-         Paragraph("<b>Secure Hash Algorithm 256-bit (SHA-256)</b>", body_style)],
-        [Paragraph("<b>7. Cryptographic Hash Value:</b>", body_style),
-         Paragraph(f"<font name='Courier' size=7><b>{evidence.sha256}</b></font>", body_style)],
-        [Paragraph("<b>8. File Size:</b>", body_style),
-         Paragraph(f"{evidence.size_bytes:,} bytes", body_style)],
-        [Paragraph("<b>9. Date & Time of Extraction:</b>", body_style),
-         Paragraph(evidence.collected_at.strftime("%Y-%m-%d %H:%M:%S UTC") if evidence.collected_at else "N/A", body_style)],
+        [
+            Paragraph("<b>1. Description of Electronic Record:</b>", body_style),
+            Paragraph(f"{evidence.item_name} ({evidence.original_filename or 'N/A'})", body_style),
+        ],
+        [
+            Paragraph("<b>2. Evidence Registration ID:</b>", body_style),
+            Paragraph(str(evidence.evidence_number), mono_style),
+        ],
+        [
+            Paragraph("<b>3. Source / Device Details:</b>", body_style),
+            Paragraph(
+                f"Make: {evidence.device_make or 'N/A'} | Model: {evidence.device_model or 'N/A'} | Serial: {evidence.device_serial or 'N/A'}",
+                body_style,
+            ),
+        ],
+        [
+            Paragraph("<b>4. Source Description:</b>", body_style),
+            Paragraph(str(evidence.source_description or "Digital media item"), body_style),
+        ],
+        [
+            Paragraph("<b>5. Acquisition Method & Tool:</b>", body_style),
+            Paragraph(
+                f"Method: {evidence.acquisition_method or 'N/A'} | Tool: {evidence.acquisition_tool or 'N/A'}",
+                body_style,
+            ),
+        ],
+        [
+            Paragraph("<b>6. Cryptographic Hash Algorithm:</b>", body_style),
+            Paragraph("<b>Secure Hash Algorithm 256-bit (SHA-256)</b>", body_style),
+        ],
+        [
+            Paragraph("<b>7. Cryptographic Hash Value:</b>", body_style),
+            Paragraph(f"<font name='Courier' size=7><b>{evidence.sha256}</b></font>", body_style),
+        ],
+        [
+            Paragraph("<b>8. File Size:</b>", body_style),
+            Paragraph(f"{evidence.size_bytes:,} bytes", body_style),
+        ],
+        [
+            Paragraph("<b>9. Date & Time of Extraction:</b>", body_style),
+            Paragraph(
+                evidence.collected_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                if evidence.collected_at
+                else "N/A",
+                body_style,
+            ),
+        ],
     ]
     t_a = Table(part_a_data, colWidths=[200, 330])
     t_a.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
     )
     story.append(t_a)
     story.append(Spacer(1, 6))
@@ -169,16 +204,32 @@ def generate_bsa_certificate_pdf(
     story.append(Paragraph(decl_a, body_style))
     story.append(Spacer(1, 10))
 
-    sig_table_a = Table([
-        [Paragraph("Signature: ___________________________", body_style), Paragraph(f"Date: ________________________", body_style)],
-        [Paragraph("Name: ______________________________", body_style), Paragraph("Designation: __________________", body_style)],
-    ], colWidths=[270, 260])
+    sig_table_a = Table(
+        [
+            [
+                Paragraph("Signature: ___________________________", body_style),
+                Paragraph("Date: ________________________", body_style),
+            ],
+            [
+                Paragraph("Name: ______________________________", body_style),
+                Paragraph("Designation: __________________", body_style),
+            ],
+        ],
+        colWidths=[270, 260],
+    )
     story.append(sig_table_a)
     story.append(Spacer(1, 10))
 
     # PART B
-    story.append(HRFlowable(width="100%", thickness=1, color=colors.HexColor("#94a3b8"), spaceAfter=8))
-    story.append(Paragraph("PART B<br/><font size=8>(To be filled by the Examiner / Forensic Expert)</font>", part_header))
+    story.append(
+        HRFlowable(width="100%", thickness=1, color=colors.HexColor("#94a3b8"), spaceAfter=8)
+    )
+    story.append(
+        Paragraph(
+            "PART B<br/><font size=8>(To be filled by the Examiner / Forensic Expert)</font>",
+            part_header,
+        )
+    )
     story.append(
         Paragraph(
             "I, the undersigned forensic / technical examiner, have examined the digital evidence described in Part A. "
@@ -189,19 +240,30 @@ def generate_bsa_certificate_pdf(
     story.append(Spacer(1, 4))
 
     part_b_data = [
-        [Paragraph("<b>Forensic Tool & Environment:</b>", body_style), Paragraph("____________________________________________________________", body_style)],
-        [Paragraph("<b>Verification SHA-256 Hash:</b>", body_style), Paragraph(f"<font name='Courier' size=7>{evidence.sha256}</font>", body_style)],
-        [Paragraph("<b>Hash Verification Result:</b>", body_style), Paragraph("VERIFIED AND DEFENDED / INTEGRITY INTACT", body_style)],
+        [
+            Paragraph("<b>Forensic Tool & Environment:</b>", body_style),
+            Paragraph("____________________________________________________________", body_style),
+        ],
+        [
+            Paragraph("<b>Verification SHA-256 Hash:</b>", body_style),
+            Paragraph(f"<font name='Courier' size=7>{evidence.sha256}</font>", body_style),
+        ],
+        [
+            Paragraph("<b>Hash Verification Result:</b>", body_style),
+            Paragraph("VERIFIED AND DEFENDED / INTEGRITY INTACT", body_style),
+        ],
     ]
     t_b = Table(part_b_data, colWidths=[200, 330])
     t_b.setStyle(
-        TableStyle([
-            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
-            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
-            ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ])
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#f8fafc")),
+                ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#cbd5e1")),
+                ("INNERGRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#e2e8f0")),
+                ("TOPPADDING", (0, 0), (-1, -1), 3),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ]
+        )
     )
     story.append(t_b)
     story.append(Spacer(1, 6))
@@ -216,10 +278,19 @@ def generate_bsa_certificate_pdf(
     )
     story.append(Spacer(1, 10))
 
-    sig_table_b = Table([
-        [Paragraph("Expert Signature: ______________________", body_style), Paragraph("Date: ________________________", body_style)],
-        [Paragraph("Examiner Name: _______________________", body_style), Paragraph("Institution / Lab: _____________", body_style)],
-    ], colWidths=[270, 260])
+    sig_table_b = Table(
+        [
+            [
+                Paragraph("Expert Signature: ______________________", body_style),
+                Paragraph("Date: ________________________", body_style),
+            ],
+            [
+                Paragraph("Examiner Name: _______________________", body_style),
+                Paragraph("Institution / Lab: _____________", body_style),
+            ],
+        ],
+        colWidths=[270, 260],
+    )
     story.append(sig_table_b)
     story.append(Spacer(1, 15))
 

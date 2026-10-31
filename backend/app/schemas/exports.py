@@ -3,7 +3,7 @@ Export package schemas.
 """
 
 from datetime import datetime
-from typing import Optional
+
 from pydantic import BaseModel, Field
 
 
@@ -14,16 +14,16 @@ class ExportCreateRequest(BaseModel):
 
 
 class ExportBuildRequest(BaseModel):
-    passphrase: Optional[str] = None
+    passphrase: str | None = None
 
 
 class ExportResponse(BaseModel):
     id: str
     evidence_id: str
     case_id: str
-    approval_request_id: Optional[str] = None
+    approval_request_id: str | None = None
     requested_by: str
-    approved_by: Optional[str] = None
+    approved_by: str | None = None
     encrypted: bool
     package_sha256: str
     package_size: int

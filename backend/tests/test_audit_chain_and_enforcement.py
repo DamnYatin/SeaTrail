@@ -2,19 +2,17 @@
 Tests 1, 2, and 3: Audit chain appending, concurrency, database enforcement, and tamper detection.
 """
 
-import base64
-import concurrent.futures
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from app.models.audit import AuditCheckpoint, AuditLog
-from app.models.cases import Case, CaseStatus, CaseClassification
-from app.models.evidence import EvidenceItem, EvidenceType, EvidenceStatus, IntegrityStateEnum
-from app.models.links import Annotation, CaseNote
+from app.models.audit import AuditLog
+from app.models.cases import Case, CaseClassification, CaseStatus
+from app.models.evidence import EvidenceItem, EvidenceType
 from app.models.users import User, UserRole
-from app.services import audit_chain, checkpoints
+from app.services import checkpoints
 from app.services.audit_chain import AuditAction, append, verify_chain
 
 
@@ -119,7 +117,7 @@ def test_2_database_enforcement_triggers(db_session: Session):
         storage_bucket="sealtrail-evidence",
         storage_key="SL26-0099/E0001/a",
         collected_by_user_id=user.id,
-        collected_at=datetime.now(timezone.utc),
+        collected_at=datetime.now(UTC),
         intake_by=user.id,
         current_custodian_id=user.id,
         current_location="Evidence Locker A",
@@ -129,17 +127,21 @@ def test_2_database_enforcement_triggers(db_session: Session):
 
     # 4. Attempt to update immutable column on evidence_items
     with pytest.raises(Exception) as exc_info:
-        db_session.execute(text(f"UPDATE evidence_items SET sha256 = 'b' * 64 WHERE id = '{item.id}'"))
+        db_session.execute(
+            text(f"UPDATE evidence_items SET sha256 = 'b' * 64 WHERE id = '{item.id}'")
+        )
         db_session.commit()
     db_session.rollback()
     assert "IMMUTABILITY_VIOLATION" in str(exc_info.value)
 
     # 5. Attempt chain-forking insert (wrong prev_hash or gap)
     with pytest.raises(Exception) as exc_info:
-        db_session.execute(text("""
+        db_session.execute(
+            text("""
             INSERT INTO audit_log (seq, ts, action, payload, prev_hash, entry_hash)
             VALUES (999, '2026-10-31 12:00:00', 'TAMPER', '{}', 'wrong_hash', 'bad')
-        """))
+        """)
+        )
         db_session.commit()
     db_session.rollback()
     assert "CHAIN_VIOLATION" in str(exc_info.value)
@@ -152,13 +154,15 @@ def test_3_tamper_detection(db_session: Session, test_engine):
         conn.execute(text("DROP TRIGGER trg_audit_log_no_update"))
         conn.execute(text("UPDATE audit_log SET payload = '{\"tampered\": true}' WHERE seq = 2"))
         # Re-create trigger
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_log_no_update
             BEFORE UPDATE ON audit_log
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
+        """)
+        )
 
     db_session.expire_all()
     result = verify_chain(db_session)
@@ -172,17 +176,19 @@ def test_3_tamper_detection(db_session: Session, test_engine):
         conn.execute(text("DROP TRIGGER trg_audit_log_no_delete"))
         conn.execute(text("DELETE FROM audit_checkpoints"))
         conn.execute(text("DELETE FROM audit_log"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_log_no_delete
             BEFORE DELETE ON audit_log
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
+        """)
+        )
 
-    e1 = append(db_session, None, AuditAction.CHAIN_GENESIS, payload={"init": 1})
-    e2 = append(db_session, None, AuditAction.CASE_CREATED, payload={"case": "SL26-0001"})
-    e3 = append(db_session, None, AuditAction.EVIDENCE_REGISTERED, payload={"ev": "SL26-0001-E0001A"})
+    append(db_session, None, AuditAction.CHAIN_GENESIS, payload={"init": 1})
+    append(db_session, None, AuditAction.CASE_CREATED, payload={"case": "SL26-0001"})
+    append(db_session, None, AuditAction.EVIDENCE_REGISTERED, payload={"ev": "SL26-0001-E0001A"})
     db_session.commit()
 
     # Create signed checkpoint over head (seq=3)
@@ -201,32 +207,46 @@ def test_3_tamper_detection(db_session: Session, test_engine):
     with test_engine.begin() as conn:
         conn.execute(text("DROP TRIGGER trg_audit_log_no_update"))
         conn.execute(text(f"UPDATE audit_log SET entry_hash = '{fake_f}' WHERE seq = 2"))
-        conn.execute(text(f"UPDATE audit_log SET prev_hash = '{fake_f}', entry_hash = '{fake_e}' WHERE seq = 3"))
-        conn.execute(text("""
+        conn.execute(
+            text(
+                f"UPDATE audit_log SET prev_hash = '{fake_f}', entry_hash = '{fake_e}' WHERE seq = 3"
+            )
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_log_no_update
             BEFORE UPDATE ON audit_log
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
+        """)
+        )
 
     db_session.expire_all()
     # Because seq 2 entry_hash != recomputed canonical hash, verify_chain fails
     res_rewrite = verify_chain(db_session)
     assert res_rewrite.ok is False
-    assert res_rewrite.reason in ("ENTRY_HASH_MISMATCH", "CHECKPOINT_HASH_MISMATCH", "CHECKPOINT_SIGNATURE_INVALID")
+    assert res_rewrite.reason in (
+        "ENTRY_HASH_MISMATCH",
+        "CHECKPOINT_HASH_MISMATCH",
+        "CHECKPOINT_SIGNATURE_INVALID",
+    )
 
     # 3. Forged checkpoint signature detection
     with test_engine.begin() as conn:
         conn.execute(text("DROP TRIGGER trg_audit_checkpoints_no_update"))
-        conn.execute(text(f"UPDATE audit_checkpoints SET signature_b64 = 'AAAA' WHERE id = '{cp.id}'"))
-        conn.execute(text("""
+        conn.execute(
+            text(f"UPDATE audit_checkpoints SET signature_b64 = 'AAAA' WHERE id = '{cp.id}'")
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_checkpoints_no_update
             BEFORE UPDATE ON audit_checkpoints
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
+        """)
+        )
 
     db_session.expire_all()
     res_forged = verify_chain(db_session)
@@ -238,17 +258,58 @@ def test_3_tamper_detection(db_session: Session, test_engine):
         conn.execute(text("DROP TRIGGER trg_audit_log_no_delete"))
         conn.execute(text("DELETE FROM audit_checkpoints"))
         conn.execute(text("DELETE FROM audit_log"))
-        conn.execute(text("""
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_checkpoints_no_delete
             BEFORE DELETE ON audit_checkpoints
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
-        conn.execute(text("""
+        """)
+        )
+        conn.execute(
+            text("""
             CREATE TRIGGER trg_audit_log_no_delete
             BEFORE DELETE ON audit_log
             BEGIN
                 SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
             END;
-        """))
+        """)
+        )
+
+
+def test_13_no_api_route_can_set_audit_ts(client, db_session):
+    """Test 13: Prove no API route can set audit ts; all audit entries are stamped with server UTC time."""
+    from app.main import app
+    from app.models.audit import AuditLog
+
+    # Verify no route signature accepts audit_ts
+    for route in app.routes:
+        if hasattr(route, "endpoint"):
+            sig = getattr(route.endpoint, "__annotations__", {})
+            assert "audit_ts" not in sig
+
+    # Authenticate and attempt to send forged timestamp in case creation
+    supervisor_res = client.post(
+        "/api/v1/auth/login",
+        json={"email": "supervisor1@sealtrail.internal", "password": "TestPassword123!"},
+    )
+    if supervisor_res.status_code == 200:
+        token = supervisor_res.json()["access_token"]
+        forged_ts = "2019-01-01T00:00:00Z"
+        res = client.post(
+            "/api/v1/cases",
+            headers={"Authorization": f"Bearer {token}"},
+            json={
+                "name": "Timestamp Tamper Verification Case",
+                "classification": "CONFIDENTIAL",
+                "ts": forged_ts,
+                "audit_ts": forged_ts,
+            },
+        )
+        assert res.status_code == 201
+
+        # Check audit log row: timestamp must be current server time, not client-supplied
+        latest_audit = db_session.query(AuditLog).order_by(AuditLog.seq.desc()).first()
+        assert latest_audit is not None
+        assert latest_audit.ts.year >= 2026

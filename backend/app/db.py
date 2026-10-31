@@ -2,10 +2,11 @@
 Database connection, session management and engine configuration using SQLAlchemy 2.0 (sync).
 """
 
+from collections.abc import Generator
 from contextlib import contextmanager
-from typing import Generator
+
 from sqlalchemy import create_engine
-from sqlalchemy.orm import declarative_base, sessionmaker, Session
+from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
 from app.config import settings
 
