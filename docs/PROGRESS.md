@@ -2,9 +2,9 @@
 
 | Metric | Status |
 |--------|--------|
-| Last verified stage | **Stage 5 Integrity engine** |
-| Current stage in progress | **Stage 6 Reports and exports** |
-| Passed tests | 14 backend tests (Tests 1, 2, 3, 4, 5, 6, 7, 8, 9) |
+| Last verified stage | **Stage 6 Reports and exports** |
+| Current stage in progress | **Stage 7 Retention** |
+| Passed tests | 16 backend tests (Tests 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11) |
 | Known issues | Docker Compose CLI absent on Windows workstation; codebase designed with container-parity and verified with in-process test fixtures. |
 
 ## Completed Stages
@@ -13,11 +13,11 @@
 - [x] **Stage 2 Auth, RBAC, cases** (`82715b4`): Argon2id password hashing, lockout, JWT access & httpOnly refresh cookie, RBAC permissions matrix, case CRUD and members, Test 8 passing, `docs/openapi.json` exported.
 - [x] **Stage 3 Evidence intake** (`9b015b6`): Storage service (S3/MinIO), streaming SHA-256 intake, Crockford base32 check character numbering, three-way verification (pinned, live, audit), controlled PDF labels with QR, Tests 4–5 passing.
 - [x] **Stage 4 Custody and collaboration** (`bcf7e93`): Custody transfer state machine (internal, external), receipt acknowledgement re-verification, dual-authorization approvals engine, annotations, people, events, notes, links, timeline, Tests 6–7 passing.
-- [x] **Stage 5 Integrity engine**: Anomaly detection rules engine (HASH_MISMATCH, OBJECT_REPLACED, CHAIN_BROKEN, CHECKPOINT_INVALID, MISSING_ACK, OFF_HOURS_ACCESS, BURST_ACCESS, REPEATED_DENIED) with deduplication and audit linking, in-process APScheduler background jobs, alerts REST API, chain verification endpoint with `integrity_state` caching, evidence verification sweep service and API, Test 9 passing.
+- [x] **Stage 5 Integrity engine** (`f041d3b`): Anomaly detection rules engine (HASH_MISMATCH, OBJECT_REPLACED, CHAIN_BROKEN, CHECKPOINT_INVALID, MISSING_ACK, OFF_HOURS_ACCESS, BURST_ACCESS, REPEATED_DENIED) with deduplication and audit linking, in-process APScheduler background jobs, alerts REST API, chain verification endpoint with `integrity_state` caching, evidence verification sweep service and API, Test 9 passing.
+- [x] **Stage 6 Reports and exports**: Cryptographically signed custody reports (JSON + ReportLab PDF with QR verification code and legal notice), offline report verification endpoint (`POST /reports/verify`), statutory Section 63 BSA draft certificate PDF, verifiable export package generation (`SEALTRAIL-EXPORT-*.zip`) with embedded offline verifier (`verify.py`), SHA256SUMS.txt, Ed25519 manifest signature, optional AES-256 ZIP encryption via pyzipper, Tests 10 and 11 passing.
 
 ## Next Stages
-- [ ] **Stage 6 Reports and exports** (Custody report JSON/PDF + verify, export package with offline `verify.py`, draft Section 63 BSA certificate)
-- [ ] **Stage 7 Retention** (Legal hold, retention policies, approved disposal)
+- [ ] **Stage 7 Retention** (Legal hold, retention policies, approved disposal, export `docs/openapi.json` again)
 - [ ] **Stage 8 Frontend foundation** (MUI theme, AppShell, Sidebar, Evidence Items table matching reference)
 - [ ] **Stage 9a Frontend workflows** (Create Evidence dialog, actions menu, transfers, approvals)
 - [ ] **Stage 9b Frontend oversight** (Dashboard, timeline, audit log, integrity, alerts, reports)
