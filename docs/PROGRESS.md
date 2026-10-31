@@ -2,8 +2,8 @@
 
 | Metric | Status |
 |--------|--------|
-| Last verified stage | **Stage 9a Frontend workflows** |
-| Current stage in progress | **Stage 9b Frontend oversight** |
+| Last verified stage | **Stage 9b Frontend oversight** |
+| Current stage in progress | **Stage 10 Tamper simulator & hardening** |
 | Passed tests | 17 backend tests passing + Frontend tsc, eslint, build passing |
 | Known issues | Docker Compose CLI absent on Windows workstation; codebase designed with container-parity and verified with in-process test fixtures. |
 
@@ -18,9 +18,9 @@
 - [x] **Stage 7 Retention** (`79ca4dd`): Legal hold placement on evidence and cases, dual-authorization hold release, retention policies (Standard 5y, Extended 10y, Short 90d), retention due listing, approved disposal with complete S3 object version deletion, status DISPOSED with permanent SHA-256 tombstone preserving complete audit trail, Test 12 passing, `docs/openapi.json` re-exported.
 - [x] **Synthetic Seed Data** (`557628b`): Realistic synthetic dataset generated through service layer (7 users, 3 cases, 24 evidence items across formats, active transfers, overdue SLA alert, dual-authorization approvals, legal holds, annotations, entity links, signed checkpoint). `verify_chain` verified clean.
 - [x] **Stage 8 Frontend foundation** (`e9de7c7`): MUI dark (#1e1e1e / #2d2d2d) and light themes, 232px sidebar navigation, responsive AppShell, full Evidence Items table matching reference design with pagination, search, column chooser, expandable row with metadata split, cryptographic SHA-256 integrity block, tabbed subpanels, status chips and hash text. Strict TypeScript, ESLint and production build passing.
-- [x] **Stage 9a Frontend workflows** (`feat(ui): evidence intake, custody actions, approvals`): Create Evidence dialog with chunked client-side hashing via hash-wasm (real-time progress bar), all Action menu flows (Transfer Custody, Acknowledge Receipt, Add Annotation, Create Defensible Link, Legal Hold placement/release request, Export Package request, PDF/JSON reports), Transfers Page with overdue SLA tracking and direct receipt acknowledgement, Approvals Page with dual-authorization two-person rule enforcement (self-approval blocked).
+- [x] **Stage 9a Frontend workflows** (`8774c2b`): Create Evidence dialog with chunked client-side hashing via hash-wasm (real-time progress bar), all Action menu flows (Transfer Custody, Acknowledge Receipt, Add Annotation, Create Defensible Link, Legal Hold placement/release request, Export Package request, PDF/JSON reports), Transfers Page with overdue SLA tracking and direct receipt acknowledgement, Approvals Page with dual-authorization two-person rule enforcement (self-approval blocked).
+- [x] **Stage 9b Frontend oversight** (`feat(ui): dashboard, audit log, integrity, alerts, reports, compliance`): Dashboard with live chain status card and verification trigger, Cases management with merged chronological incident timeline, Audit log with side drawer canonical JSON inspection and Ed25519 checkpoints table, Integrity sweep and audit chain verify UI, Alerts page with acknowledge and resolution notes, Reports page with independent report verification card, Retention & disposal tracking, Users admin view, and QR code `/e/:evidenceNumber` check character resolution route.
 
 ## Next Stages
-- [ ] **Stage 9b Frontend oversight** (Dashboard, timeline, audit log with chain verify, integrity, alerts, reports)
 - [ ] **Stage 10 Tamper simulator & hardening** (tamper_demo.py live attack simulator, security hardening)
 - [ ] **Stage 11 Docs and final QA** (Architecture, threat model, demo script, QA checklist, final tag)

@@ -7,10 +7,20 @@ import { getTheme } from './theme';
 import { AuthProvider } from './auth/AuthContext';
 import { ProtectedRoute } from './auth/ProtectedRoute';
 import { AppShell } from './layout/AppShell';
+
 import { LoginPage } from './pages/LoginPage';
+import { DashboardPage } from './pages/DashboardPage';
+import { CasesPage } from './pages/CasesPage';
 import { EvidencePage } from './pages/EvidencePage';
 import { TransfersPage } from './pages/TransfersPage';
 import { ApprovalsPage } from './pages/ApprovalsPage';
+import { AuditLogPage } from './pages/AuditLogPage';
+import { IntegrityPage } from './pages/IntegrityPage';
+import { AlertsPage } from './pages/AlertsPage';
+import { ReportsPage } from './pages/ReportsPage';
+import { RetentionPage } from './pages/RetentionPage';
+import { UsersPage } from './pages/UsersPage';
+import { EvidenceLookupPage } from './pages/EvidenceLookupPage';
 import { PlaceholderPage } from './pages/PlaceholderPage';
 
 const queryClient = new QueryClient({
@@ -48,20 +58,25 @@ export default function App() {
               <Route element={<ProtectedRoute />}>
                 <Route element={<AppShell mode={mode} onToggleTheme={toggleTheme} />}>
                   <Route index element={<Navigate to="/evidence" replace />} />
+                  <Route path="/dashboard" element={<DashboardPage />} />
+                  <Route path="/cases" element={<CasesPage />} />
                   <Route path="/evidence" element={<EvidencePage />} />
-                  <Route path="/dashboard" element={<PlaceholderPage title="Dashboard" subtitle="System Status and Oversight" />} />
-                  <Route path="/cases" element={<PlaceholderPage title="Cases" subtitle="Active Investigations" />} />
                   <Route path="/approvals" element={<ApprovalsPage />} />
                   <Route path="/transfers" element={<TransfersPage />} />
-                  <Route path="/locations" element={<PlaceholderPage title="Item Locations" subtitle="Physical & Digital Custody" />} />
+                  <Route path="/audit" element={<AuditLogPage />} />
+                  <Route path="/integrity" element={<IntegrityPage />} />
+                  <Route path="/alerts" element={<AlertsPage />} />
+                  <Route path="/reports" element={<ReportsPage />} />
+                  <Route path="/holds" element={<RetentionPage />} />
+                  <Route path="/retention" element={<RetentionPage />} />
+                  <Route path="/users" element={<UsersPage />} />
+
+                  {/* QR Code lookup route */}
+                  <Route path="/e/:evidenceNumber" element={<EvidenceLookupPage />} />
+
+                  {/* Additional directories */}
+                  <Route path="/locations" element={<PlaceholderPage title="Item Locations" subtitle="Physical & Digital Custody Overview" />} />
                   <Route path="/people" element={<PlaceholderPage title="People Directory" subtitle="Persons of Interest & Contacts" />} />
-                  <Route path="/audit" element={<PlaceholderPage title="Audit Log" subtitle="Append-only Hash Chained Journal" />} />
-                  <Route path="/integrity" element={<PlaceholderPage title="Integrity Sweep" subtitle="Continuous Three-Way Verification" />} />
-                  <Route path="/alerts" element={<PlaceholderPage title="Security Alerts" subtitle="Rule-based Anomaly Flags" />} />
-                  <Route path="/reports" element={<PlaceholderPage title="Reports" subtitle="Signed Defensible Custody Reports" />} />
-                  <Route path="/holds" element={<PlaceholderPage title="Legal Holds" subtitle="Active Statutory Preservation Orders" />} />
-                  <Route path="/retention" element={<PlaceholderPage title="Retention & Disposal" subtitle="Lifecycle Policies & Tombstones" />} />
-                  <Route path="/users" element={<PlaceholderPage title="User Management" subtitle="Access Control & Personnel" />} />
                   <Route path="/profile" element={<PlaceholderPage title="User Profile" subtitle="Account Settings" />} />
                 </Route>
               </Route>
