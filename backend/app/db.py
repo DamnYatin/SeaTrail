@@ -27,6 +27,17 @@ def get_engine():
     return _engine
 
 
+def set_engine(engine):
+    global _engine, _SessionLocal
+    _engine = engine
+    _SessionLocal = sessionmaker(
+        autocommit=False,
+        autoflush=False,
+        bind=_engine,
+        expire_on_commit=False,
+    )
+
+
 def get_session_factory():
     global _SessionLocal
     if _SessionLocal is None:

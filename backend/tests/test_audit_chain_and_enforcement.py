@@ -196,12 +196,12 @@ def test_3_tamper_detection(db_session: Session, test_engine):
 
     # 2. Recompute chain from seq=2 (the sophisticated DBA attacker who updates entry_hash and prev_hash)
     # The checkpoint signature must catch this rewrite!
+    fake_f = "f" * 64
+    fake_e = "e" * 64
     with test_engine.begin() as conn:
         conn.execute(text("DROP TRIGGER trg_audit_log_no_update"))
-        # Change payload and recompute hash for seq 2 and 3
-        # Put forged entry_hash on seq 2
-        conn.execute(text("UPDATE audit_log SET entry_hash = 'f' * 64 WHERE seq = 2"))
-        conn.execute(text("UPDATE audit_log SET prev_hash = 'f' * 64, entry_hash = 'e' * 64 WHERE seq = 3"))
+        conn.execute(text(f"UPDATE audit_log SET entry_hash = '{fake_f}' WHERE seq = 2"))
+        conn.execute(text(f"UPDATE audit_log SET prev_hash = '{fake_f}', entry_hash = '{fake_e}' WHERE seq = 3"))
         conn.execute(text("""
             CREATE TRIGGER trg_audit_log_no_update
             BEFORE UPDATE ON audit_log
@@ -231,3 +231,24 @@ def test_3_tamper_detection(db_session: Session, test_engine):
     db_session.expire_all()
     res_forged = verify_chain(db_session)
     assert res_forged.ok is False
+
+    # Clean up test rows so subsequent tests run on a clean slate
+    with test_engine.begin() as conn:
+        conn.execute(text("DROP TRIGGER trg_audit_checkpoints_no_delete"))
+        conn.execute(text("DROP TRIGGER trg_audit_log_no_delete"))
+        conn.execute(text("DELETE FROM audit_checkpoints"))
+        conn.execute(text("DELETE FROM audit_log"))
+        conn.execute(text("""
+            CREATE TRIGGER trg_audit_checkpoints_no_delete
+            BEFORE DELETE ON audit_checkpoints
+            BEGIN
+                SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
+            END;
+        """))
+        conn.execute(text("""
+            CREATE TRIGGER trg_audit_log_no_delete
+            BEFORE DELETE ON audit_log
+            BEGIN
+                SELECT RAISE(ABORT, 'APPEND_ONLY_VIOLATION: Table is append-only');
+            END;
+        """))

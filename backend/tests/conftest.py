@@ -15,10 +15,11 @@ import app.models  # load all models
 
 @pytest.fixture(scope="session")
 def test_engine():
+    from sqlalchemy.pool import StaticPool
     engine = create_engine(
         "sqlite:///:memory:",
         connect_args={"check_same_thread": False},
-        pool_pre_ping=True,
+        poolclass=StaticPool,
     )
 
     # Enable SQLite foreign keys
@@ -31,6 +32,8 @@ def test_engine():
     Base.metadata.create_all(engine)
 
     # Create SQLite triggers mirroring PostgreSQL triggers
+    from app.db import set_engine
+    set_engine(engine)
     with engine.begin() as conn:
         # Append-only triggers on audit_log, audit_checkpoints, annotations, case_notes
         for table in ["audit_log", "audit_checkpoints", "annotations", "case_notes"]:
